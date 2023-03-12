@@ -43,16 +43,16 @@ docker run --name elasticsearch --rm -e ES_JAVA_OPTS="-Xms1g -Xmx1g" --net elast
 ```
 
 ```shell
-mkdir config/elastic
+mkdir -p config/elastic
 
-docker cp elasticsearch:/usr/share/elasticsearch/config/certs/http_ca.crt config/elastic/cert
+docker cp elasticsearch:/usr/share/elasticsearch/config/certs config/elastic/
 
 export ELASTIC_USER=elastic
 # 암호 새로 만들기
 export ELASTIC_PASSWORD="$(cat elastic-bootstrap-password.txt)"
 # docker exec -it elasticsearch bin/elasticsearch-reset-password -u elastic -s -b
 # export ELASTIC_PASSWORD="0TZuAlIONcxx1EVcqZQI"
-export ELASTIC_CERT="config/elastic/certs/ca/ca.crt"
+export ELASTIC_CERT="config/elastic/certs/es01/es01.crt"
 export CURL_CA_BUNDLE=$ELASTIC_CERT
 export ELASTIC_SERVER=https://localhost:9200
 

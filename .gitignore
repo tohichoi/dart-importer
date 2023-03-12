@@ -1,0 +1,8 @@
+config/elastic/
+config/kibana/
+__pycache__
+config.backup*
+data/
+venv
+.env
+elastic-bootstrap-password.txt

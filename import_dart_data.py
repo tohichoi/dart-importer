@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
+import argparse
 import json
 from pathlib import Path
 from pprint import pprint
+import sys
 import requests
 from requests import get  # to make GET request
 from bs4 import BeautifulSoup
@@ -15,15 +17,16 @@ import subprocess
 from tqdm import tqdm
 import unittest
 from elasticsearch import Elasticsearch
+from elasticsearch.helpers import streaming_bulk, scan
 
 
-logfmt = "%(asctime)s.%(msecs)03dZ %(levelname)s %(message)s"
+logfmt = "%(asctime)s %(levelname)s %(message)s"
 coloredlogs.install(fmt=logfmt)
 
 logging.basicConfig(
     level=logging.DEBUG,
     format=logfmt,
-    datefmt="%Y-%m-%dT%H:%M:%S",
+    datefmt="%Y-%m-%dT%H:%M:%S%z",
 )
 logging.Formatter.converter = time.gmtime
 logger = logging.getLogger()
@@ -44,11 +47,8 @@ ELASTIC_CERTFILE = config['ELASTIC_CERTFILE']
 ELASTIC_CERTFILE_FINGERPRINT = config['ELASTIC_CERTFILE_FINGERPRINT']
 ELASTICSEARCH_URL = config['ELASTICSEARCH_URL']
 
-# CORP_CODE = 
-
 dart_base_params={
     "crtfc_key":DART_API_KEY,
-    'corp_code': None
 }
 
 dart_params={
@@ -92,7 +92,46 @@ elastic_session.auth = (ELASTIC_USER, ELASTIC_PASSWORD)
 # elastic_session.verify = ELASTIC_CERTFILE
 elastic_session.verify = False
 
-def parse_corp_code(filename, do_post):
+esclient = Elasticsearch(
+    ELASTICSEARCH_URL,
+    # ca_certs=ELASTIC_CERTFILE,
+    ssl_assert_fingerprint=ELASTIC_CERTFILE_FINGERPRINT,
+    basic_auth=(ELASTIC_USER, ELASTIC_PASSWORD)
+)
+
+
+def parse_corp_code(filename):
+    with open(filename) as fd:
+        logger.info(f'Parsing {filename}')
+        soup = BeautifulSoup(fd.read(), features="xml")
+    return soup.result.find_all('list')
+
+
+def generate_corp_code_doc(code_info_list):
+    """corp code generator
+    
+        refer to fetch_corp_code()
+
+    Args:
+        code_info_list (BeautifulSoup tag): _description_
+
+    Yields:
+        dict: _description_
+    """
+    for ci in code_info_list:
+        # code_info[ci.corp_name.text]
+        doc = {
+            '_id': ci.corp_code.text,
+            'code': ci.corp_code.text,
+            'corp_name': ci.corp_name.text,
+            'stock_code': ci.stock_code.text,
+            'modify_date': ci.modify_date.text
+        }
+
+        yield doc
+        
+
+def parse_corp_code_OLD(filename, do_post):
     with open(filename) as fd:
         logger.info(f'Parsing {filename}')
         soup = BeautifulSoup(fd.read(), features="xml")
@@ -145,12 +184,21 @@ def download(url, params, output_filename, is_binary):
 
 # 고유번호
 def get_corp_code(output_filename):
+    """고유번호
+    
+        https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019018
+
+    Args:
+        output_filename (_type_): _description_
+    """
     url = "https://opendart.fss.or.kr/api/corpCode.xml"
     if os.path.exists(output_filename):
-        logger.info(f'Result file exists : {output_filename}')
+        logger.info(f'We have {output_filename}. Fetching corp_code is skipped.')
         return
-    logger.info('Querying Corporation Code ... ')
-    download(url, dart_query_params, output_filename, True)
+    logger.info('Querying corp_code ... ')
+    
+    params = dart_base_params | {}
+    download(url, params, output_filename, True)
 
 
 def get_corp_info(corp_code):
@@ -166,12 +214,22 @@ def get_corp_info(corp_code):
 
     
 def get_corp_info(corp_code, years):
-    # 공시정보
-    # https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019001
-    # 기업개황
-    # https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019002
-    # 공시서류원본파일
-    # https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019003
+    """get_corp_info
+
+    공시정보:
+    https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019001
+    기업개황:
+    https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019002
+    공시서류원본파일:
+    https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019003
+
+    Args:
+        corp_code (_type_): _description_
+        years (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
     data = None
     def _get_financial_statements(year:int):
         url = 'https://opendart.fss.or.kr/api/fnlttSinglAcntAll.json'
@@ -212,64 +270,154 @@ def analyze_corp_info(data):
 
 
 def check_corp_code_imported():
-    r = elastic_session.get(ELASTICSEARCH_URL + '/corp_code/_count')
-    if r.status_code == requests.codes.ok:
-        rj = r.json()
-        logger.info(f"corp_code has {rj['count']} records")
-        return rj['count']
-    elif r.status_code == 404:
-        logger.info(f'{r.status_code} : maybe index is not created.')
-        return 0
-    else:
-        logger.error(f'{r.status_code}')
-        r.raise_for_status()
+    #
+    # low-level api client
+    #
+    # r = elastic_session.get(ELASTICSEARCH_URL + '/corp_code/_count')
+    # if r.status_code == requests.codes.ok:
+    #     rj = r.json()
+    #     logger.info(f"corp_code has {rj['count']} records")
+    #     return rj['count']
+    # elif r.status_code == 404:
+    #     logger.info(f'{r.status_code} : maybe index is not created.')
+    #     return 0
+    # else:
+    #     logger.error(f'{r.status_code}')
+    #     r.raise_for_status()
+    resp = esclient.search(index="corp_code", query={"match_all": {}})
+    return resp['hits']['total']['value']
 
 
-def delete_all_data():
-    r = elastic_session.get(
-        ELASTICSEARCH_URL + '/corp_code/_delete_by_query?conflicts=proceed&pretty',
-        data={
-            "query": {
-                "match_all": {}
-            }
-        })
+# low-level api client
+# https://www.elastic.co/guide/en/elasticsearch/client/python-api/current/examples.html
+# def delete_all_data():
+#     r = elastic_session.get(
+#         ELASTICSEARCH_URL + '/corp_code/_delete_by_query?conflicts=proceed&pretty',
+#         data={
+#             "query": {
+#                 "match_all": {}
+#             }
+#         })
+    
+    
+# https://github.com/elastic/elasticsearch-py/blob/main/examples/bulk-ingest
+def create_index(client):
+    """Creates an index in Elasticsearch if one isn't already there."""
+    client.indices.create(
+        index="corp_code",
+        body={
+            "settings": {"number_of_shards": 1},
+            "mappings": {
+                "properties": {
+                    "corp_code": {"type": "text"},
+                    "corp_name": {"type": "text"},
+                    "stock_code": {"type": "text"},
+                    "modify_date": {
+                        "type": "date",
+                        "format": "yyyyMMdd"}
+                }
+            },
+        },
+        ignore=400,
+    )
+    
+    
+def delete_index(client):
+    client.delete_by_query('corp_code', query={"match_all": {}})
 
 
+def fetch_corp_code(client):
+    corp_code_filename = f'{DART_RESULT_DIR}/CORPCODE.xml'
+    corp_code_output_filename = f'{DART_RESULT_DIR}/corp-code.zip'
+
+    logger.info('Fetching corp code from DART system')
+    get_corp_code(corp_code_output_filename)
+
+    logger.info('Checking index status ... ')
+    if check_corp_code_imported() == 0:
+        logger.info('Parsing corp code')
+        corp_code_list = parse_corp_code(corp_code_filename)
+        number_of_docs = len(corp_code_list)
+        progress = tqdm(unit="docs", total=number_of_docs)
+        successes = 0
+        logging.disable(sys.maxsize)
+        for ok, action in streaming_bulk(
+                client=client, index="corp_code", actions=generate_corp_code_doc(corp_code_list),
+            ):
+                progress.update(1)
+                successes += ok
+        logging.disable(logging.NOTSET)
+        print("Indexed %d/%d documents" % (successes, number_of_docs))
+    
+    
+def main():
+    parser = argparse.ArgumentParser(description='dart importer')
+    parser.add_argument(
+        '--create-index', help='Create ElasticSearch Index', action='store_true')
+    parser.add_argument(
+        '--delete-index', help='Delete ElasticSearch Index', action='store_true')
+    parser.add_argument(
+        '--fetch-corp-code', help='Fetch corp_code', action='store_true')
+    args = parser.parse_args()
+
+    if args.create_index:
+        create_index(esclient)
+
+    if args.delete_index:
+        ans = input("WARNING: Delete all data? Type 'delete' to proceed.")
+        if ans.lower() == 'delete':
+            delete_index(esclient)
+        else:
+            print('Cancelled.')
+
+    if args.fetch_corp_code:
+        fetch_corp_code(esclient)
+        
+    # # 삼성전자
+    # data = get_corp_info('00126380', list(range(2021, 2023)))
+    # analyze_corp_info(data)
+    # elastic_session.close()
+    
+    
+if __name__ == '__main__':
+    main()
+    
+    
 class Test(unittest.TestCase):
     def setUp(self):
-        pass
-    
-    def test_elasticsearch_client(self):
-
+        # Create the client instance
         # Password for the 'elastic' user generated by Elasticsearch
         # ELASTIC_PASSWORD = "<password>"
-
-        # Create the client instance
-        client = Elasticsearch(
+        self.esclient = Elasticsearch(
             ELASTICSEARCH_URL,
             # ca_certs=ELASTIC_CERTFILE,
             ssl_assert_fingerprint=ELASTIC_CERTFILE_FINGERPRINT,
             basic_auth=("elastic", ELASTIC_PASSWORD)
         )
 
-        # Successful response!
-        info = client.info()
+    def test_elasticsearch_client(self):
+        info = self.esclient.info()
         print(info)
-        # {'name': 'instance-0000000000', 'cluster_name': ...}
-    
-    
-if __name__ == '__main__':
-    corp_code_filename = f'{DART_RESULT_DIR}/CORPCODE.xml'
-    corp_code_output_filename = f'{DART_RESULT_DIR}/corp-code.zip'
+        self.assertGreater(len(info), 0)
 
-    logger.info('Fetching corp code')
-    get_corp_code(corp_code_output_filename)
+    def test_query_id(self):
+        # 삼성잔자
+        code = "00126380"
+        corp_name = '삼성전자'
+        resp = self.esclient.get(index="corp_code", id=code)
+        # print(resp)
+        # {'_index': 'corp_code', '_id': '00126380', '_version': 1, '_seq_no': 288931, '_primary_term': 1, 
+        # 'found': True, 
+        # '_source': {'code': '00126380', 'corp_name': '삼성전자', 'stock_code': '005930', 'modify_date': '20230110'}}
+        self.assertEqual(resp['_source']['code'], code)
+        self.assertEqual(resp['_source']['corp_name'], corp_name)
 
-    logger.info('Parsing corp code')
-    if check_corp_code_imported() == 0:
-        parse_corp_code(corp_code_filename, True)
-    
-    # 삼성전자
-    data = get_corp_info('00126380', list(range(2021, 2023)))
-    analyze_corp_info(data)
-    elastic_session.close()
+    def test_query_all_docs(self):
+        logging.disable(sys.maxsize)  # Python 3
+        n = 0
+        for doc in scan(self.esclient, query={"query": {"match_all": {}}}, index="corp_code"):
+            if n == 0:
+                print(doc)
+            n += 1
+        logging.disable(logging.NOTSET)
+        self.assertEqual(n, 97568)
