@@ -1,6 +1,6 @@
 import logging
 import unittest
-from import_dart_data import esclient, ELASTICSEARCH_URL, ELASTIC_CERTFILE_FINGERPRINT, ELASTIC_PASSWORD, get_corp_info_from_dart
+from import_dart_data import esclient, ELASTICSEARCH_URL, ELASTIC_CERTFILE_FINGERPRINT, ELASTIC_PASSWORD, get_corp_info_from_dart, upload_corp_year_data, upload_corp_quarter_data
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import streaming_bulk, scan
 import sys
@@ -22,12 +22,17 @@ class Test(unittest.TestCase):
         self.corp_name = '삼성전자'
 
     def test_get_corp_info_from_dart(self):
-        data = get_corp_info_from_dart(self.code, [2022])
-        print(data)
+        years = [2022]
+        data = get_corp_info_from_dart(self.code, years)
+        # print(data)
         # self.assertIsNotNone(data)
-        self.assertGreater(len(data), 0)
+        # data는 1Q~4Q
+        self.assertEqual(len(data), len(years))
+
+        year = years[0]
+        n = upload_corp_quarter_data(self.esclient, data[year][0])
+        self.assertGreaterEqual(n, 1)
         
-    
     def test_elasticsearch_client(self):
         info = self.esclient.info()
         print(info)

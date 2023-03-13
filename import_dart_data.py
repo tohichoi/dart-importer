@@ -15,7 +15,7 @@ import logging
 import coloredlogs
 import subprocess
 from tqdm import tqdm
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, NotFoundError
 from elasticsearch.helpers import streaming_bulk, scan
 
 
@@ -128,7 +128,7 @@ def generate_corp_code_doc(code_info_list):
         }
 
         yield doc
-        
+
 
 def parse_corp_code_OLD(filename, do_post):
     with open(filename) as fd:
@@ -269,9 +269,9 @@ def get_corp_info_from_dart(corp_code, years):
         return qdata
     
     logger.info('Querying Financial Statement ... ')
-    data = []
+    data = dict()
     for y in years:
-        data.append(_get_financial_statements(y))
+        data[y] = _get_financial_statements(y)
 
     # for d in data['list']:
     #     print(d['account_nm'])
@@ -322,14 +322,17 @@ def check_corp_code_imported():
 # https://github.com/elastic/elasticsearch-py/blob/main/examples/bulk-ingest
 def create_index(client):
     """Creates an index in Elasticsearch if one isn't already there."""
+
+    # field types
+    # https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping-types.html
     client.indices.create(
         index="corp_code",
         body={
             "settings": {"number_of_shards": 1},
             "mappings": {
                 "properties": {
-                    "corp_code": {"type": "text"},
-                    "corp_name": {"type": "text"},
+                    "corp_code": {"type": "search_as_you_type"},
+                    "corp_name": {"type": "search_as_you_type"},
                     "stock_code": {"type": "text"},
                     "modify_date": {
                         "type": "date",
@@ -337,13 +340,95 @@ def create_index(client):
                 }
             },
         },
+        # ignore
+        # >It’s good to know: Use an ignore parameter with the one or more status codes you want to overlook when you want to avoid raising an exception.
+        # Troubleshooting the “400 Resource-Already-Exists” error message
+        # If you try to create an index name(indices.create) that has already been created, the RequestError(400, 'resource_already_exists_exception)' will appear.
         ignore=400,
     )
     
-    
-def delete_index(client):
-    client.delete_by_query('corp_code', query={"match_all": {}})
+    # https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS003&apiId=2019020
+    # "rcept_no": "20220516001751",1
+    # "reprt_code": "11013",
+    # "bsns_year": "2022",
+    # "corp_code": "00126380",
+    # "sj_div": "BS",
+    # "sj_nm": "재무상태표",
+    # "account_id": "ifrs-full_CurrentLiabilities",
+    # "account_nm": "유동부채",
+    # "account_detail": "-",
+    # "thstrm_nm": "제 54 기 1분기말",
+    # "thstrm_amount": "56799776000000",
+    # "frmtrm_nm": "제 53 기말",
+    # "frmtrm_amount": "53067303000000",
+    # "ord": "20",
+    # "currency": "KRW"
+    client.indices.create(
+        index="corp_financial_statements",
+        body={
+            "settings": {"number_of_shards": 1},
+            "mappings": {
+                "properties": {
+                    # 접수번호
+                    "rcept_no": {"type": "text"},
+                    # 보고서 코드
+                    "reprt_code": {"type": "text"},
+                    # 사업 연도
+                    "bsns_year": { "type": "date", "format": "yyyy" },
+                    # 고유번호
+                    "corp_code": {"type": "search_as_you_type"},
+                    # 재무제표구분
+                    # BS : 재무상태표 IS : 손익계산서 CIS : 포괄손익계산서 CF : 현금흐름표 SCE : 자본변동표
+                    "sj_div": {"type": "search_as_you_type"},
+                    # 재무제표명
+                    "sj_nm": {"type": "search_as_you_type"},
+                    # 계정ID
+                    # XBRL 표준계정ID ※ 표준계정ID가 아닐경우 ""-표준계정코드 미사용-"" 표시
+                    "account_id": {"type": "text"},
+                    # 계정명
+                    "account_nm": {"type": "search_as_you_type"},
+                    # 계정상세
+                    # ※ 자본변동표에만 출력 ex) 계정 상세명칭 예시 - 자본 [member]|지배기업 소유주지분 - 자본 [member]|지배기업 소유주지분|기타포괄손익누계액 [member]
+                    "account_detail": {"type": "text"},
+                    # 당기명
+                    "thstrm_nm": {"type": "text"},
+                    # 당기금액
+                    # 9,999,999,999 ※ 분/반기 보고서이면서 (포괄)손익계산서 일 경우 [3개월] 금액
+                    "thstrm_amount": {"type": "long"},
+                    # 당기누적금액
+                    "thstrm_add_amount": {"type": "long"},
+                    # 전기명
+                    "frmtrm_nm": {"type": "text"},
+                    # 전기금액
+                    "frmtrm_amount": {"type": "long"},
+                    # 전기명(분/반기)
+                    "frmtrm_q_nm": {"type": "text"},
+                    # 전기금액(분/반기)
+                    # ※ 분/반기 보고서이면서 (포괄)손익계산서 일 경우 [3개월] 금액
+                    "frmtrm_q_amount": {"type": "long"},
+                    # 전기누적금액
+                    "frmtrm_add_amount": {"type": "long"},
+                    # 전전기명
+                    "bfefrmtrm_nm": {"type": "text"},
+                    # 전전기금액
+                    "bfefrmtrm_amount": {"type": "long"},
+                    # 계정과목 정렬순서
+                    "ord": {"type": "integer"},
+                    # 통화 단위
+                    "currency": {"type": "text"}
+                }
+            },
+        },
+        ignore=400,
+    )
 
+def delete_index(client):
+    try:
+        client.delete_by_query(index='corp_code', query={"match_all": {}})
+        client.delete_by_query(
+            index='corp_financial_statements', query={"match_all": {}})
+    except NotFoundError:
+        pass
 
 def import_corp_code(client):
     corp_code_filename = f'{DART_RESULT_DIR}/CORPCODE.xml'
@@ -378,6 +463,18 @@ def get_fetched_docs():
     pass
     
     
+def get_local_corp_info_status(corp_code):
+    # check directory
+    Path(DART_RESULT_DIR).joinpath(Path(f'corp_data/{corp_code}'))
+    
+    # read 1Q ~ 4Q
+    
+    # for each of json, check status is 000
+    
+    # if status is 000, data is ok.
+    # else need fetch
+    
+        
 def import_corp_data(client):
     n = 0
     years = list(range(2017, 2023))
@@ -398,7 +495,65 @@ def import_corp_data(client):
             
         n += 1
     
+
+def upload_corp_quarter_data_bulk(client, data:dict):
+    if type(data) != dict:
+        logger.error(f'Data type is not dict : {str(type(data))}')
+        return -1
     
+    if data['status'] != '000':
+        logger.error(f'Status code is {data["status"]}({data["message"]})')
+        return -1
+    
+    docs = data['list']
+    number_of_docs = len(docs)
+    progress = tqdm(unit="docs", total=number_of_docs)
+    successes = 0
+    # logging.disable(sys.maxsize)
+    for ok, action in streaming_bulk(
+            client=client, index="corp_financial_statements", actions=(d for d in docs),
+        ):
+            progress.update(1)
+            successes += ok
+    # logging.disable(logging.NOTSET)
+    print("Indexed %d/%d documents" % (successes, number_of_docs))
+    
+    return successes
+    
+    
+def upload_corp_quarter_data(client, data: dict):
+    if type(data) != dict:
+        logger.error(f'Data type is not dict : {str(type(data))}')
+        return -1
+
+    if data['status'] != '000':
+        logger.error(f'Status code is {data["status"]}({data["message"]})')
+        return -1
+
+    docs = data['list']
+    number_of_docs = len(docs)
+    progress = tqdm(unit="docs", total=number_of_docs)
+    successes = 0
+    # logging.disable(sys.maxsize)
+    for doc in docs:
+        # create 는 id 필요. index 는 불필요
+        resp = client.index(index="corp_financial_statements", document=doc)
+        if resp['result'] == 'created':
+            successes += 1
+        progress.update(1)
+
+    # logging.disable(logging.NOTSET)
+    print("Indexed %d/%d documents" % (successes, number_of_docs))
+
+    return successes
+
+
+def upload_corp_year_data(client, data:list):
+    ns = []
+    for qd in data:
+        ns.append(upload_corp_quarter_data(client, qd))
+    return ns
+
 def main():
     parser = argparse.ArgumentParser(description='dart importer')
     parser.add_argument(
@@ -416,8 +571,8 @@ def main():
         create_index(esclient)
 
     if args.delete_index:
-        ans = input("WARNING: Delete all data? Type 'delete' to proceed.")
-        if ans.lower() == 'delete':
+        ans = input("WARNING: Delete all data? Type 'delete' to proceed.\nYour choice: ")
+        if ans.strip().lower() == 'delete':
             delete_index(esclient)
         else:
             print('Cancelled.')

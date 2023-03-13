@@ -210,8 +210,21 @@ curl -u $ELASTIC_USER:$ELASTIC_PASSWORD -XPOST '$ELASTIC_SERVER/corp_code/_delet
 }'
 ```
 
+
 ## count
 
 ```shell
 curl -u $ELASTIC_USER:$ELASTIC_PASSWORD -XGET '$ELASTIC_SERVER/corp_code/_count'
 ```
+
+## creating index
+
+https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-create-index.html
+
+## python api
+
+https://elasticsearch-py.readthedocs.io/en/v8.6.2/
+
+https://www.elastic.co/guide/en/elasticsearch/client/python-api/current/index.html
+
+https://kb.objectrocket.com/elasticsearch/how-to-create-and-delete-elasticsearch-indexes-using-the-python-client-library
