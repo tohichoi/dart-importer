@@ -3,6 +3,26 @@
 https://www.elastic.co/guide/en/elasticsearch/reference/current/docker.html#docker-cli-run-dev-mode
 
 
+## system setting
+
+`sysctl -w vm.max_map_count=262144`
+
+### optional
+
+https://www.elastic.co/guide/en/elasticsearch/reference/current/docker.html#_configuration_files_must_be_readable_by_the_elasticsearch_user
+
+
+  - Pass the --group-add 0 command line option to docker run. This ensures that the user under which Elasticsearch is running is also a member of the root (GID 0) group inside the container.
+
+
+```
+mkdir esdatadir
+chmod g+rwx esdatadir
+chgrp 0 esdatadir
+```
+
+## docker
+
 ```shell
 docker pull docker.elastic.co/elasticsearch/elasticsearch:8.6.2
 
@@ -53,6 +73,8 @@ export ELASTIC_PASSWORD="$(cat elastic-bootstrap-password.txt)"
 # docker exec -it elasticsearch bin/elasticsearch-reset-password -u elastic -s -b
 # export ELASTIC_PASSWORD="0TZuAlIONcxx1EVcqZQI"
 export ELASTIC_CERT="config/elastic/certs/es01/es01.crt"
+# openssl x509 -noout -fingerprint -sha256 -inform pem -in $ELASTIC_CERT
+export ELASTIC_CERTFILE_FINGERPRINT=$(openssl x509 -noout -fingerprint -sha256 -inform pem -in $ELASTIC_CERT | sed "s/sha256 Fingerprint=//")
 export CURL_CA_BUNDLE=$ELASTIC_CERT
 export ELASTIC_SERVER=https://localhost:9200
 

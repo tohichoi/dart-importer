@@ -15,7 +15,6 @@ import logging
 import coloredlogs
 import subprocess
 from tqdm import tqdm
-import unittest
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import streaming_bulk, scan
 
@@ -167,10 +166,9 @@ def parse_corp_code_OLD(filename, do_post):
             r.raise_for_status()
             
             
-def download(url, params, output_filename, is_binary):
+def download(url, params, output_filename):
     with requests.Session() as s:
         r = s.get(url, params=params)
-        html = r.content
         p=Path(output_filename)
         if not p.parent.exists():
             p.parent.mkdir()
@@ -181,9 +179,12 @@ def download(url, params, output_filename, is_binary):
         # if p.suffix == '.json':
         #     p2=
         #     subprocess.run(['jq', '.', '<', ])
+        
+        # actually dict
+        return r.json()
 
 # 고유번호
-def get_corp_code(output_filename):
+def fetch_corp_code_from_dart(output_filename):
     """고유번호
     
         https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019018
@@ -194,27 +195,36 @@ def get_corp_code(output_filename):
     url = "https://opendart.fss.or.kr/api/corpCode.xml"
     if os.path.exists(output_filename):
         logger.info(f'We have {output_filename}. Fetching corp_code is skipped.')
-        return
-    logger.info('Querying corp_code ... ')
+    else:
+        logger.info('Querying corp_code ... ')
+        params = dart_base_params | {}
+        download(url, params, output_filename)
+
+    p = Path(output_filename)
+    px = p.with_name('CORPCODE.xml')
+    if not px.exists():
+        subprocess.run(f'unzip {p.absolute()} -d {p.parent}', shell=True)
+
+    if not px.exists():
+        logger.error(f'Cannot generate file : {p.absolute()}')
+        
+
+def get_corp_code_doc(corp_code):
+    # r = elastic_session.get(ELASTICSEARCH_URL + '/corp_code/_search',
+    #                          data={
+    #                              "query": {
+    #                                 "term": {
+    #                                      "corp_code": corp_code
+    #                                  }
+    #                                 }
+    #                              },
+    #                          headers={'Content-Type': 'application/json'})
+    resp = esclient.get(index="corp_code", id=corp_code)
+    return resp['_source']
+
     
-    params = dart_base_params | {}
-    download(url, params, output_filename, True)
-
-
-def get_corp_info(corp_code):
-    r = elastic_session.get(ELASTICSEARCH_URL + '/corp_code/_search',
-                             data={
-                                 "query": {
-                                    "term": {
-                                         "corp_code": corp_code
-                                     }
-                                    }
-                                 },
-                             headers={'Content-Type': 'application/json'})
-
-    
-def get_corp_info(corp_code, years):
-    """get_corp_info
+def get_corp_info_from_dart(corp_code, years):
+    """get_corp_info_from_dart
 
     공시정보:
     https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019001
@@ -230,24 +240,33 @@ def get_corp_info(corp_code, years):
     Returns:
         _type_: _description_
     """
-    data = None
     def _get_financial_statements(year:int):
         url = 'https://opendart.fss.or.kr/api/fnlttSinglAcntAll.json'
-        output_filename = f'{DART_RESULT_DIR}/corp_data/{corp_code}-{corp_name}/finantial-statement={year}.json'
+        corp_name = get_corp_code_doc(corp_code)['corp_name']
+        output_filename = f'{DART_RESULT_DIR}/corp_data/{corp_code}-{corp_name}/finantial-statement-{year}-<quarter>.json'
         p=Path(output_filename)
         if p.exists():
             logger.warning(f'{p.name} exists. Skipping fetching.')
-        else:
-            if not p.parent.exists():
-                os.makedirs(p.parent)
-            dart_query_params = dart_base_params | dart_params['fnlttSinglAcntAll']
-            dart_query_params['year'] = str(year)
-            download(url, dart_query_params, output_filename, True)
 
-        with open(output_filename) as fd:
-            data = json.load(fd)
-    
-        return data
+        if not p.parent.exists():
+            os.makedirs(p.parent)
+        dart_query_params = dart_base_params | dart_params['fnlttSinglAcntAll']
+        dart_query_params['corp_code'] = str(corp_code)
+        dart_query_params['bsns_year'] = str(year)
+        # 1분기보고서 : 11013
+        # 반기보고서 : 11012
+        # 3분기보고서 : 11014
+        # 사업보고서 : 11011
+        qdata = []
+        rt_list = ['11013', '11012', '11014', '11011']
+        rt_dict = dict(zip(rt_list, [ f'{i}Q' for i in range(1, 5)]))
+        for rt in rt_list:
+            dart_query_params['reprt_code'] = rt
+            of = output_filename.replace('<quarter>', rt_dict[rt])
+            d = download(url, dart_query_params, of)
+            qdata.append(d)
+
+        return qdata
     
     logger.info('Querying Financial Statement ... ')
     data = []
@@ -326,12 +345,12 @@ def delete_index(client):
     client.delete_by_query('corp_code', query={"match_all": {}})
 
 
-def fetch_corp_code(client):
+def import_corp_code(client):
     corp_code_filename = f'{DART_RESULT_DIR}/CORPCODE.xml'
     corp_code_output_filename = f'{DART_RESULT_DIR}/corp-code.zip'
 
     logger.info('Fetching corp code from DART system')
-    get_corp_code(corp_code_output_filename)
+    fetch_corp_code_from_dart(corp_code_output_filename)
 
     logger.info('Checking index status ... ')
     if check_corp_code_imported() == 0:
@@ -350,6 +369,36 @@ def fetch_corp_code(client):
         print("Indexed %d/%d documents" % (successes, number_of_docs))
     
     
+def get_fetched_docs():
+    """이미 fetch된 doc 리스트 구하기
+    
+        - 9만개 이상의 corp_code가 존재함
+        - 전부 한 디렉토리에 넣어야 하나? => not effective
+    """
+    pass
+    
+    
+def import_corp_data(client):
+    n = 0
+    years = list(range(2017, 2023))
+    quarters = list(range(1, 5))
+    its = scan(client, query={"query": {"match_all": {}}}, index="corp_code")
+    # its = scan(client, query={"query": {
+    #     "term": {
+    #         "corp_code"
+    #     }
+    #     }}, index="corp_code")
+    for doc in its:
+        # if n == 0:
+        #     print(doc)
+        
+        # for testing
+        if n < 3:
+            data = get_corp_info_from_dart(doc['corp_code'], 2022)
+            
+        n += 1
+    
+    
 def main():
     parser = argparse.ArgumentParser(description='dart importer')
     parser.add_argument(
@@ -357,7 +406,10 @@ def main():
     parser.add_argument(
         '--delete-index', help='Delete ElasticSearch Index', action='store_true')
     parser.add_argument(
-        '--fetch-corp-code', help='Fetch corp_code', action='store_true')
+        '--import-corp-code', help='Import corp_code', action='store_true')
+    parser.add_argument(
+        '--import-corp-data', help='Import corp data(filings, ...)', action='store_true')
+
     args = parser.parse_args()
 
     if args.create_index:
@@ -370,11 +422,14 @@ def main():
         else:
             print('Cancelled.')
 
-    if args.fetch_corp_code:
-        fetch_corp_code(esclient)
+    if args.import_corp_code:
+        import_corp_code(esclient)
+        
+    if args.import_corp_data:
+        import_corp_data(esclient)
         
     # # 삼성전자
-    # data = get_corp_info('00126380', list(range(2021, 2023)))
+    # data = get_corp_info_from_dart('00126380', list(range(2021, 2023)))
     # analyze_corp_info(data)
     # elastic_session.close()
     
@@ -383,41 +438,3 @@ if __name__ == '__main__':
     main()
     
     
-class Test(unittest.TestCase):
-    def setUp(self):
-        # Create the client instance
-        # Password for the 'elastic' user generated by Elasticsearch
-        # ELASTIC_PASSWORD = "<password>"
-        self.esclient = Elasticsearch(
-            ELASTICSEARCH_URL,
-            # ca_certs=ELASTIC_CERTFILE,
-            ssl_assert_fingerprint=ELASTIC_CERTFILE_FINGERPRINT,
-            basic_auth=("elastic", ELASTIC_PASSWORD)
-        )
-
-    def test_elasticsearch_client(self):
-        info = self.esclient.info()
-        print(info)
-        self.assertGreater(len(info), 0)
-
-    def test_query_id(self):
-        # 삼성잔자
-        code = "00126380"
-        corp_name = '삼성전자'
-        resp = self.esclient.get(index="corp_code", id=code)
-        # print(resp)
-        # {'_index': 'corp_code', '_id': '00126380', '_version': 1, '_seq_no': 288931, '_primary_term': 1, 
-        # 'found': True, 
-        # '_source': {'code': '00126380', 'corp_name': '삼성전자', 'stock_code': '005930', 'modify_date': '20230110'}}
-        self.assertEqual(resp['_source']['code'], code)
-        self.assertEqual(resp['_source']['corp_name'], corp_name)
-
-    def test_query_all_docs(self):
-        logging.disable(sys.maxsize)  # Python 3
-        n = 0
-        for doc in scan(self.esclient, query={"query": {"match_all": {}}}, index="corp_code"):
-            if n == 0:
-                print(doc)
-            n += 1
-        logging.disable(logging.NOTSET)
-        self.assertEqual(n, 97568)
