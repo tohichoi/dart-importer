@@ -18,10 +18,10 @@ class Test(unittest.TestCase):
         #     basic_auth=("elastic", ELASTIC_PASSWORD)
         # )
         self.esclient = esclient
-        self.code = "00126380"
+        self.corp_code = "00126380"
         self.corp_name = '삼성전자'
 
-    def test_get_corp_info_from_dart(self):
+    def test_get_corp_quarter_info_from_dart(self):
         years = [2022]
         data = get_corp_info_from_dart(self.code, years)
         # print(data)
@@ -33,6 +33,18 @@ class Test(unittest.TestCase):
         n = upload_corp_quarter_data(self.esclient, data[year][0])
         self.assertGreaterEqual(n, 1)
         
+    def test_get_corp_year_info_from_dart(self):
+        years = [2022]
+        data = get_corp_info_from_dart(self.code, years)
+        # print(data)
+        # self.assertIsNotNone(data)
+        # data는 1Q~4Q
+        self.assertEqual(len(data), len(years))
+
+        year = years[0]
+        ns = upload_corp_year_data(self.esclient, data)
+        self.assertGreaterEqual(len(ns), 1)
+        
     def test_elasticsearch_client(self):
         info = self.esclient.info()
         print(info)
@@ -40,14 +52,12 @@ class Test(unittest.TestCase):
 
     def test_query_id(self):
         # 삼성잔자
-        self.code = "00126380"
-        self.corp_name = '삼성전자'
         resp = self.esclient.get(index="corp_code", id=self.code)
         # print(resp)
         # {'_index': 'corp_code', '_id': '00126380', '_version': 1, '_seq_no': 288931, '_primary_term': 1, 
         # 'found': True, 
         # '_source': {'code': '00126380', 'corp_name': '삼성전자', 'stock_code': '005930', 'modify_date': '20230110'}}
-        self.assertEqual(resp['_source']['code'], self.code)
+        self.assertEqual(resp['_source']['corp_code'], self.code)
         self.assertEqual(resp['_source']['corp_name'], self.corp_name)
 
     def test_query_all_docs(self):

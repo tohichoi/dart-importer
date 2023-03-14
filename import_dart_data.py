@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from pprint import pprint
 import sys
+import pendulum
 import requests
 from requests import get  # to make GET request
 from bs4 import BeautifulSoup
@@ -121,7 +122,7 @@ def generate_corp_code_doc(code_info_list):
         # code_info[ci.corp_name.text]
         doc = {
             '_id': ci.corp_code.text,
-            'code': ci.corp_code.text,
+            'corp_code': ci.corp_code.text,
             'corp_name': ci.corp_name.text,
             'stock_code': ci.stock_code.text,
             'modify_date': ci.modify_date.text
@@ -141,7 +142,7 @@ def parse_corp_code_OLD(filename, do_post):
         for ci in code_info_list:
             # code_info[ci.corp_name.text]
             d = {
-                'code': ci.corp_code.text,
+                'corp_code': ci.corp_code.text,
                 'corp_name': ci.corp_name.text,
                 'stock_code': ci.stock_code.text,
                 'modify_date': ci.modify_date.text
@@ -320,16 +321,20 @@ def check_corp_code_imported():
     
     
 # https://github.com/elastic/elasticsearch-py/blob/main/examples/bulk-ingest
-def create_index(client):
+def create_index(client, indices):
     """Creates an index in Elasticsearch if one isn't already there."""
 
     # field types
     # https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping-types.html
-    client.indices.create(
-        index="corp_code",
-        body={
-            "settings": {"number_of_shards": 1},
-            "mappings": {
+    # migrating to 8
+    # https://www.elastic.co/guide/en/elasticsearch/client/python-api/master/migration.html
+    # body deprecation
+    # https://stackoverflow.com/questions/71577892/how-change-the-syntax-in-elasticsearch-8-where-body-parameter-is-deprecated
+    if 'corp_code' in indices:
+        client.options(ignore_status=400).indices.create(
+            index="corp_code",
+            settings = {"number_of_shards": 1},
+            mappings = {
                 "properties": {
                     "corp_code": {"type": "search_as_you_type"},
                     "corp_name": {"type": "search_as_you_type"},
@@ -339,35 +344,33 @@ def create_index(client):
                         "format": "yyyyMMdd"}
                 }
             },
-        },
-        # ignore
-        # >It’s good to know: Use an ignore parameter with the one or more status codes you want to overlook when you want to avoid raising an exception.
-        # Troubleshooting the “400 Resource-Already-Exists” error message
-        # If you try to create an index name(indices.create) that has already been created, the RequestError(400, 'resource_already_exists_exception)' will appear.
-        ignore=400,
-    )
+            # ignore
+            # >It’s good to know: Use an ignore parameter with the one or more status codes you want to overlook when you want to avoid raising an exception.
+            # Troubleshooting the “400 Resource-Already-Exists” error message
+            # If you try to create an index name(indices.create) that has already been created, the RequestError(400, 'resource_already_exists_exception)' will appear.
+        )
     
-    # https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS003&apiId=2019020
-    # "rcept_no": "20220516001751",1
-    # "reprt_code": "11013",
-    # "bsns_year": "2022",
-    # "corp_code": "00126380",
-    # "sj_div": "BS",
-    # "sj_nm": "재무상태표",
-    # "account_id": "ifrs-full_CurrentLiabilities",
-    # "account_nm": "유동부채",
-    # "account_detail": "-",
-    # "thstrm_nm": "제 54 기 1분기말",
-    # "thstrm_amount": "56799776000000",
-    # "frmtrm_nm": "제 53 기말",
-    # "frmtrm_amount": "53067303000000",
-    # "ord": "20",
-    # "currency": "KRW"
-    client.indices.create(
-        index="corp_financial_statements",
-        body={
-            "settings": {"number_of_shards": 1},
-            "mappings": {
+    if 'corp_data' in indices:
+        # https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS003&apiId=2019020
+        # "rcept_no": "20220516001751",1
+        # "reprt_code": "11013",
+        # "bsns_year": "2022",
+        # "corp_code": "00126380",
+        # "sj_div": "BS",
+        # "sj_nm": "재무상태표",
+        # "account_id": "ifrs-full_CurrentLiabilities",
+        # "account_nm": "유동부채",
+        # "account_detail": "-",
+        # "thstrm_nm": "제 54 기 1분기말",
+        # "thstrm_amount": "56799776000000",
+        # "frmtrm_nm": "제 53 기말",
+        # "frmtrm_amount": "53067303000000",
+        # "ord": "20",
+        # "currency": "KRW"
+        client.options(ignore_status=400).indices.create(
+            index="corp_data",
+            settings={"number_of_shards": 1},
+            mappings={
                 "properties": {
                     # 접수번호
                     "rcept_no": {"type": "text"},
@@ -415,20 +418,50 @@ def create_index(client):
                     # 계정과목 정렬순서
                     "ord": {"type": "integer"},
                     # 통화 단위
-                    "currency": {"type": "text"}
+                    "currency": {"type": "text"},
+                    # 기간
+                    "time_frame": {
+                        "type": "date_range",
+                        # https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping-date-format.html
+                        "format": "strict_date_optional_time_nanos"
+                    },
                 }
             },
+        )
+
+    client.options(ignore_status=400).indices.create(
+        index="corp_import_history",
+        settings={"number_of_shards": 1},
+        mappings={
+            "properties": {
+                "corp_code": {"type": "search_as_you_type"},
+                "year": {"type": "date", "format": "yyyy"},
+                "reprt_code": {"type": "text"},
+                "created_time": {
+                    "type": "date",
+                    # https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping-date-format.html
+                    "format": "strict_date_optional_time_nanos"
+                },
+                "number_of_imported_documents": {
+                    "type": "integer"
+                }
+            }
         },
-        ignore=400,
+        # ignore
+        # >It’s good to know: Use an ignore parameter with the one or more status codes you want to overlook when you want to avoid raising an exception.
+        # Troubleshooting the “400 Resource-Already-Exists” error message
+        # If you try to create an index name(indices.create) that has already been created, the RequestError(400, 'resource_already_exists_exception)' will appear.
     )
 
-def delete_index(client):
+def delete_documents(client, indices):
     try:
-        client.delete_by_query(index='corp_code', query={"match_all": {}})
-        client.delete_by_query(
-            index='corp_financial_statements', query={"match_all": {}})
+        if 'corp_code' in indices:
+            client.delete_by_query(index='corp_code', query={"match_all": {}})
+        if 'corp_data' in indices:
+            client.delete_by_query(index='corp_data', query={"match_all": {}})
     except NotFoundError:
         pass
+
 
 def import_corp_code(client):
     corp_code_filename = f'{DART_RESULT_DIR}/CORPCODE.xml'
@@ -486,13 +519,10 @@ def import_corp_data(client):
     #     }
     #     }}, index="corp_code")
     for doc in its:
-        # if n == 0:
-        #     print(doc)
-        
-        # for testing
-        if n < 3:
-            data = get_corp_info_from_dart(doc['corp_code'], 2022)
-            
+        corp_code = doc['_source']['corp_code']
+        for year in years:
+            ydata = get_corp_info_from_dart(corp_code, year)
+            ns = upload_corp_year_data(client, corp_code, ydata)
         n += 1
     
 
@@ -509,78 +539,124 @@ def upload_corp_quarter_data_bulk(client, data:dict):
     number_of_docs = len(docs)
     progress = tqdm(unit="docs", total=number_of_docs)
     successes = 0
-    # logging.disable(sys.maxsize)
+    logging.disable(sys.maxsize)
     for ok, action in streaming_bulk(
-            client=client, index="corp_financial_statements", actions=(d for d in docs),
+            client=client, index="corp_data", actions=(d for d in docs),
         ):
             progress.update(1)
             successes += ok
-    # logging.disable(logging.NOTSET)
-    print("Indexed %d/%d documents" % (successes, number_of_docs))
+    logging.disable(logging.NOTSET)
+    # print("Indexed %d/%d documents" % (successes, number_of_docs))
     
     return successes
     
     
-def upload_corp_quarter_data(client, data: dict):
-    if type(data) != dict:
-        logger.error(f'Data type is not dict : {str(type(data))}')
+def upload_corp_quarter_data_history(client, corp_code, qdata: list, successes):
+    docs = qdata['list']
+    '''
+                    "corp_code": {"type": "search_as_you_type"},
+                    "year": {"type": "date", "format": "yyyy"},
+                    "reprt_code": {"type": "text"},
+                    "created_time": {
+                        "type": "date",
+                        # https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping-date-format.html
+                        "format": "strict_date_optional_time_nanos"
+                    },
+                    "number_of_imported_documents": {
+                        "type": "integer"
+                    }
+    '''
+    history = {
+       'corp_code': corp_code,
+       'year': qdata[0]['list']
+    }
+    
+def _get_time_frame(doc) -> dict():
+    # doc["time_frame"]: {
+    #   "gte": "2015-10-31 12:00:00",
+    #   "lte": "2015-11-01"
+    # pass
+    QC = [ '11013', '11012', '11014', '11011' ]
+    qc = doc['reprt_code']
+    y = int(doc['bsns_year'])
+    month = QC.index(qc) * 3 + 1
+    tf = {
+        'gte': pendulum.datetime(y, month, 1).start_of('month').start_of('day').in_tz('Asia/Seoul').to_iso8601_string(),
+        'lte': pendulum.datetime(y, month+2, 1).end_of('month').end_of('day').in_tz('Asia/Seoul').to_iso8601_string()
+        }
+    doc.update({ 'time_frame' : tf })
+    return doc
+    
+    
+def upload_corp_quarter_data(client, corp_code, qdata: dict):
+    if type(qdata) != dict:
+        logger.error(f'Data type is not dict : {str(type(qdata))}')
         return -1
 
-    if data['status'] != '000':
-        logger.error(f'Status code is {data["status"]}({data["message"]})')
+    if qdata['status'] != '000':
+        logger.error(f'Status code is {qdata["status"]}({qdata["message"]})')
         return -1
 
-    docs = data['list']
+    docs = qdata['list']
     number_of_docs = len(docs)
     progress = tqdm(unit="docs", total=number_of_docs)
     successes = 0
     # logging.disable(sys.maxsize)
     for doc in docs:
         # create 는 id 필요. index 는 불필요
-        resp = client.index(index="corp_financial_statements", document=doc)
+        doc = _get_time_frame(doc)
+        resp = client.index(index="corp_data", document=doc)
+        # http status 200 or 201
+        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/201
         if resp['result'] == 'created':
             successes += 1
         progress.update(1)
-
     # logging.disable(logging.NOTSET)
-    print("Indexed %d/%d documents" % (successes, number_of_docs))
+
+    logger.info("Indexed %d/%d documents" % (successes, number_of_docs))
+    upload_corp_quarter_data_history(client, corp_code, qdata, successes)
 
     return successes
 
 
-def upload_corp_year_data(client, data:list):
+def upload_corp_year_data(client, corp_code, ydata:list):
     ns = []
-    for qd in data:
-        ns.append(upload_corp_quarter_data(client, qd))
+    for qdata in ydata:
+        ns.append(upload_corp_quarter_data(client, corp_code, qdata))
     return ns
 
+
 def main():
+    indices = ['corp_code', 'corp_data']
     parser = argparse.ArgumentParser(description='dart importer')
     parser.add_argument(
-        '--create-index', help='Create ElasticSearch Index', action='store_true')
+        '--create-index', help='Create ElasticSearch Index', 
+        choices=indices, nargs="+", default=[])
     parser.add_argument(
-        '--delete-index', help='Delete ElasticSearch Index', action='store_true')
+        '--delete-documents', help='Delete all documents',
+        choices=indices, nargs="+", default=[])
     parser.add_argument(
-        '--import-corp-code', help='Import corp_code', action='store_true')
-    parser.add_argument(
-        '--import-corp-data', help='Import corp data(filings, ...)', action='store_true')
+        '--import-data', help='Import data',
+        choices=indices, nargs="+", default=[])
+    # parser.add_argument(
+    #     '--import-corp-data', help='Import corp data(filings, ...)', action='store_true')
 
     args = parser.parse_args()
 
-    if args.create_index:
-        create_index(esclient)
+    if len(args.create_index) > 0:
+        create_index(esclient, args.create_index)
 
-    if args.delete_index:
+    if len(args.delete_documents):
         ans = input("WARNING: Delete all data? Type 'delete' to proceed.\nYour choice: ")
         if ans.strip().lower() == 'delete':
-            delete_index(esclient)
+            delete_documents(esclient, args.delete_documents)
         else:
             print('Cancelled.')
 
-    if args.import_corp_code:
+    if 'corp_code' in args.import_data:
         import_corp_code(esclient)
         
-    if args.import_corp_data:
+    if 'corp_data' in args.import_data:
         import_corp_data(esclient)
         
     # # 삼성전자
