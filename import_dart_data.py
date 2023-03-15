@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
+import collections
 import json
 from pathlib import Path
 from pprint import pprint
@@ -224,7 +225,7 @@ def get_corp_code_doc(corp_code):
     return resp['_source']
 
     
-def get_corp_info_from_dart(corp_code, years):
+def get_corp_info_from_dart(corp_code, years) -> dict:
     """get_corp_info_from_dart
 
     공시정보:
@@ -239,13 +240,13 @@ def get_corp_info_from_dart(corp_code, years):
         years (_type_): _description_
 
     Returns:
-        _type_: _description_
+        dict : year<int>, [1q, 2q, ..., 4q]
     """
     def _get_financial_statements(year:int):
         url = 'https://opendart.fss.or.kr/api/fnlttSinglAcntAll.json'
         corp_name = get_corp_code_doc(corp_code)['corp_name']
         output_filename = f'{DART_RESULT_DIR}/corp_data/{corp_code}-{corp_name}/finantial-statement-{year}-<quarter>.json'
-        p=Path(output_filename)
+        p = Path(output_filename)
         if p.exists():
             logger.warning(f'{p.name} exists. Skipping fetching.')
 
@@ -495,42 +496,53 @@ def get_fetched_docs():
     """
     pass
     
+
+def get_corp_info_from_elastic(client, corp_code, years):
+    # 연단위로만 체크하자
+    # resp = es.search(index="test-index", query={"match_all": {}})
+    # print("Got %d Hits:" % resp['hits']['total']['value'])
+    # for hit in resp['hits']['hits']:
+    #     print("%(timestamp)s %(author)s: %(text)s" % hit["_source"])
+    pass
+
+
+def import_one_corp_data(client, corp_code, years) -> list:
+    ns = []
+
+    ysdata = get_corp_info_from_dart(corp_code, years)
+    for year, ydata in ysdata.items():
+        n = upload_corp_year_data(client, corp_code, ydata)
+        ns.append(n)
+    return ns
     
-def get_local_corp_info_status(corp_code):
-    # check directory
-    Path(DART_RESULT_DIR).joinpath(Path(f'corp_data/{corp_code}'))
     
-    # read 1Q ~ 4Q
-    
-    # for each of json, check status is 000
-    
-    # if status is 000, data is ok.
-    # else need fetch
-    
-        
-def import_corp_data(client):
-    n = 0
+def import_corp_data(client) -> dict:
+    nc = collections.defaultdict(list)
     years = list(range(2017, 2023))
     quarters = list(range(1, 5))
     its = scan(client, query={"query": {"match_all": {}}}, index="corp_code")
-    # its = scan(client, query={"query": {
-    #     "term": {
-    #         "corp_code"
-    #     }
-    #     }}, index="corp_code")
     for doc in its:
         corp_code = doc['_source']['corp_code']
-        for year in years:
-            ydata = get_corp_info_from_dart(corp_code, year)
-            ns = upload_corp_year_data(client, corp_code, ydata)
-        n += 1
-    
+        # [
+        #   [
+        #     [-1, -1, -1, -1],
+        #     [-1, -1, -1, -1],
+        #     [-1, -1, -1, -1],
+        #     [-1, -1, -1, -1],
+        #     [-1, -1, -1, -1],
+        #     [-1, -1, -1, -1]
+        #   ]
+        # ]
+        num_data = import_one_corp_data(client, corp_code, years)
+        nc['corp_code'] = num_data
+    return nc
 
-def upload_corp_quarter_data_bulk(client, data:dict):
+
+def upload_corp_quarter_data_bulk(client, data:dict) -> int:
     if type(data) != dict:
         logger.error(f'Data type is not dict : {str(type(data))}')
         return -1
-    
+
     if data['status'] != '000':
         logger.error(f'Status code is {data["status"]}({data["message"]})')
         return -1
@@ -551,8 +563,9 @@ def upload_corp_quarter_data_bulk(client, data:dict):
     return successes
     
     
-def upload_corp_quarter_data_history(client, corp_code, qdata: list, successes):
+def upload_corp_quarter_data_history(client, corp_code, qdata: dict, successes):
     docs = qdata['list']
+
     '''
                     "corp_code": {"type": "search_as_you_type"},
                     "year": {"type": "date", "format": "yyyy"},
@@ -568,10 +581,11 @@ def upload_corp_quarter_data_history(client, corp_code, qdata: list, successes):
     '''
     history = {
        'corp_code': corp_code,
-       'year': qdata[0]['list']
+       'year': qdata['list'][0]['bsns_year']
     }
-    
-def _get_time_frame(doc) -> dict():
+
+
+def _get_time_frame(doc) -> dict:
     # doc["time_frame"]: {
     #   "gte": "2015-10-31 12:00:00",
     #   "lte": "2015-11-01"
@@ -588,7 +602,7 @@ def _get_time_frame(doc) -> dict():
     return doc
     
     
-def upload_corp_quarter_data(client, corp_code, qdata: dict):
+def upload_corp_quarter_data(client, corp_code, qdata: dict) -> int:
     if type(qdata) != dict:
         logger.error(f'Data type is not dict : {str(type(qdata))}')
         return -1
@@ -601,7 +615,7 @@ def upload_corp_quarter_data(client, corp_code, qdata: dict):
     number_of_docs = len(docs)
     progress = tqdm(unit="docs", total=number_of_docs)
     successes = 0
-    # logging.disable(sys.maxsize)
+    logging.disable(sys.maxsize)
     for doc in docs:
         # create 는 id 필요. index 는 불필요
         doc = _get_time_frame(doc)
@@ -611,17 +625,17 @@ def upload_corp_quarter_data(client, corp_code, qdata: dict):
         if resp['result'] == 'created':
             successes += 1
         progress.update(1)
-    # logging.disable(logging.NOTSET)
+    logging.disable(logging.NOTSET)
 
-    logger.info("Indexed %d/%d documents" % (successes, number_of_docs))
+    # logger.info("Indexed %d/%d documents" % (successes, number_of_docs))
     upload_corp_quarter_data_history(client, corp_code, qdata, successes)
 
     return successes
 
 
-def upload_corp_year_data(client, corp_code, ydata:list):
+def upload_corp_year_data(client, corp_code, ydata: dict):
     ns = []
-    for qdata in ydata:
+    for year, qdata in ydata.items():
         ns.append(upload_corp_quarter_data(client, corp_code, qdata))
     return ns
 
@@ -630,7 +644,7 @@ def main():
     indices = ['corp_code', 'corp_data']
     parser = argparse.ArgumentParser(description='dart importer')
     parser.add_argument(
-        '--create-index', help='Create ElasticSearch Index', 
+        '--create-index', help='Create ElasticSearch Index. Example: ./import_dart_data.py --create-index corp_code corp_data',
         choices=indices, nargs="+", default=[])
     parser.add_argument(
         '--delete-documents', help='Delete all documents',
@@ -667,5 +681,3 @@ def main():
     
 if __name__ == '__main__':
     main()
-    
-    

@@ -217,6 +217,84 @@ curl -u $ELASTIC_USER:$ELASTIC_PASSWORD -XPOST '$ELASTIC_SERVER/corp_code/_delet
 curl -u $ELASTIC_USER:$ELASTIC_PASSWORD -XGET '$ELASTIC_SERVER/corp_code/_count'
 ```
 
+
+## elastic rest api
+
+https://www.elastic.co/guide/en/elasticsearch/reference/current/rest-apis.html
+
+### searching
+
+https://www.elastic.co/guide/en/elasticsearch/reference/current/search-search.html
+
+#### Querying DSL
+
+```
+GET /_search
+{
+  "query": { 
+    "bool": { 
+      "must": [
+        { "match": { "title":   "Search"        }},
+        { "match": { "content": "Elasticsearch" }}
+      ],
+      "filter": [ 
+        { "term":  { "status": "published" }},
+        { "range": { "publish_date": { "gte": "2015-01-01" }}}
+      ]
+    }
+  }
+}
+```
+
+1분기보고서 : 11013
+반기보고서 : 11012
+3분기보고서 : 11014
+사업보고서 : 11011
+
+```
+GET /_search
+{
+  "query": { 
+    "bool": { 
+      "must": [
+        { "match": { "corp_code":   "<CORP_CODE>"        }},
+        { "match": { "bsns_year": "<YEAR>" }},
+        { "match": { "reprt_code": "<11013|11012|11014|11011>" }}
+      ],
+      "filter": [ 
+        { "term":  { "status": "published" }},
+        { "range": { "publish_date": { "gte": "2015-01-01" }}}
+      ]
+    }
+  }
+}
+```
+
+```
+GET /_search
+{
+  "query": {
+    "exists": {
+      "field": "user"
+    }
+  }
+}
+```
+
+```
+GET /_search
+{
+  "query": {
+    "term": {
+      "corp_code": "xxx",
+      "boost": 1.0
+    }
+  }
+}
+```
+
+https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl.html
+
 ## creating index
 
 https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-create-index.html

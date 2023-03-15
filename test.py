@@ -23,26 +23,25 @@ class Test(unittest.TestCase):
 
     def test_get_corp_quarter_info_from_dart(self):
         years = [2022]
-        data = get_corp_info_from_dart(self.code, years)
+        data = get_corp_info_from_dart(self.corp_code, years)
         # print(data)
         # self.assertIsNotNone(data)
         # data는 1Q~4Q
         self.assertEqual(len(data), len(years))
 
         year = years[0]
-        n = upload_corp_quarter_data(self.esclient, data[year][0])
+        n = upload_corp_quarter_data(self.esclient, self.corp_code, data[year][0])
         self.assertGreaterEqual(n, 1)
         
     def test_get_corp_year_info_from_dart(self):
         years = [2022]
-        data = get_corp_info_from_dart(self.code, years)
+        data = get_corp_info_from_dart(self.corp_code, years)
         # print(data)
         # self.assertIsNotNone(data)
         # data는 1Q~4Q
         self.assertEqual(len(data), len(years))
 
-        year = years[0]
-        ns = upload_corp_year_data(self.esclient, data)
+        ns = upload_corp_year_data(self.esclient, self.corp_code, data)
         self.assertGreaterEqual(len(ns), 1)
         
     def test_elasticsearch_client(self):
@@ -52,12 +51,12 @@ class Test(unittest.TestCase):
 
     def test_query_id(self):
         # 삼성잔자
-        resp = self.esclient.get(index="corp_code", id=self.code)
+        resp = self.esclient.get(index="corp_code", id=self.corp_code)
         # print(resp)
         # {'_index': 'corp_code', '_id': '00126380', '_version': 1, '_seq_no': 288931, '_primary_term': 1, 
         # 'found': True, 
         # '_source': {'code': '00126380', 'corp_name': '삼성전자', 'stock_code': '005930', 'modify_date': '20230110'}}
-        self.assertEqual(resp['_source']['corp_code'], self.code)
+        self.assertEqual(resp['_source']['corp_code'], self.corp_code)
         self.assertEqual(resp['_source']['corp_name'], self.corp_name)
 
     def test_query_all_docs(self):
