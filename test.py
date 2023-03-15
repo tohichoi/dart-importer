@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from import_dart_data import esclient, ELASTICSEARCH_URL, ELASTIC_CERTFILE_FINGERPRINT, ELASTIC_PASSWORD, \
-    get_corp_info_from_dart, upload_corp_year_data, upload_corp_quarter_data, import_one_corp_data
+    get_corp_data_from_dart, upload_year_corp_data, upload_quarter_corp_data, import_one_corp_data
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import streaming_bulk, scan
 import sys
@@ -28,30 +28,30 @@ class Test(unittest.TestCase):
 
     def test_get_corp_quarter_info_from_dart(self):
         years = [2022]
-        data = get_corp_info_from_dart(self.corp_code, years)
+        data = get_corp_data_from_dart(self.corp_code, years)
         # print(data)
         # self.assertIsNotNone(data)
         # data는 1Q~4Q
         self.assertEqual(len(data), len(years))
 
         year = years[0]
-        n = upload_corp_quarter_data(self.esclient, self.corp_code, data[year][0])
+        n = upload_quarter_corp_data(self.esclient, self.corp_code, data[year][0])
         self.assertGreaterEqual(n, 1)
 
     def test_get_corp_year_info_from_dart(self):
         years = [2022]
-        data = get_corp_info_from_dart(self.corp_code, years)
+        corp_data = get_corp_data_from_dart(self.corp_code, self.corp_name, years)
         # print(data)
         # self.assertIsNotNone(data)
         # data는 1Q~4Q
-        self.assertEqual(len(data), len(years))
-
-        ns = upload_corp_year_data(self.esclient, self.corp_code, data)
+        self.assertEqual(len(corp_data), len(years))
+        self.assertTrue(2022 in corp_data)
+        ns = upload_year_corp_data(self.esclient, self.corp_code, corp_data[2022])
         self.assertGreaterEqual(len(ns), 1)
 
     def test_import_one_corp_data(self):
-        years = [2022]
-        num_data = import_one_corp_data(self.esclient, self.corp_code, years)
+        years = [2021, 2022]
+        num_data = import_one_corp_data(self.esclient, self.corp_code, self.corp_name, years)
         self.assertGreaterEqual(len(num_data), 1)
 
     def test_elasticsearch_client(self):

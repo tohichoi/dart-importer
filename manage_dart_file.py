@@ -1,8 +1,6 @@
 #!/usr/bin/env python
-import json
 import os
 import re
-import unittest
 import zipfile
 from collections import defaultdict
 from pathlib import Path
@@ -15,8 +13,9 @@ class DartFileManager:
         Args:
             **kwargs:
                 data_dir :
-                corp_code
-                corp_name
+                corp_code :
+                corp_name :
+                logger : None
         """
 
         self.config = kwargs
@@ -33,6 +32,10 @@ class DartFileManager:
     def _zipfile(self):
         return f'{self._corp_dir}/{self._prefix}-{self.config["corp_code"]}-{self.config["corp_name"]}.zip'
 
+    @property
+    def logger(self):
+        return self.config['logger']
+
     def get_filelist(self):
         p = Path(self._corp_dir)
         fl1 = list(p.glob('*.json'))
@@ -46,14 +49,40 @@ class DartFileManager:
 
         return None
 
+    def has_year_data(self, year):
+        zf = zipfile.ZipFile(self._zipfile, mode='r')
+        for f in zf.namelist():
+            m = re.match(self._prefix + r'-([0-9]{4})-([1-4])Q.json', f)
+            if m:
+                y = int(m.group(1))
+                if year == y:
+                    return True
+        return False
+
+    def has_quarter_data(self, quarter):
+        zf = zipfile.ZipFile(self._zipfile, mode='r')
+        for f in zf.namelist():
+            m = re.match(self._prefix + r'-([0-9]{4})-([1-4])Q.json', f)
+            if m:
+                q = int(m.group(2))
+                if quarter == q:
+                    return True
+        return False
+
     def load(self):
         cd = self._corp_dir
         if not cd.exists():
             # logger.warning(f'{p.name} exists. Skipping fetching.')
-            raise FileNotFoundError(f'File {self._corp_dir} not found')
+            # raise FileNotFoundError(f'File {self._corp_dir} not found')
+            if self.logger:
+                self.logger.error(f'File {self._corp_dir} not found')
+            return None
 
         if not Path(self._zipfile).exists():
-            raise FileNotFoundError(f'File {self._zipfile} not found')
+            # raise FileNotFoundError(f'File {self._zipfile} not found')
+            if self.logger:
+                self.logger.error(f'File {self._zipfile} not found')
+            return None
 
         corp_data = defaultdict(list)
         zf = zipfile.ZipFile(self._zipfile, mode='r')
@@ -63,6 +92,7 @@ class DartFileManager:
                 year = int(m.group(1))
                 with zf.open(f) as fd:
                     corp_data[year].append(fd.read().decode())
+        zf.close()
         return corp_data
 
     def save(self, corp_data: dict):
