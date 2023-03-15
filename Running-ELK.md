@@ -257,9 +257,9 @@ GET /_search
   "query": { 
     "bool": { 
       "must": [
-        { "match": { "corp_code":   "<CORP_CODE>"        }},
-        { "match": { "bsns_year": "<YEAR>" }},
-        { "match": { "reprt_code": "<11013|11012|11014|11011>" }}
+        { "term": { "corp_code":   "<CORP_CODE>"        }},
+        { "term": { "bsns_year": "<YEAR>" }},
+        { "term": { "reprt_code": "<11013|11012|11014|11011>" }}
       ],
       "filter": [ 
         { "term":  { "status": "published" }},

@@ -1,9 +1,14 @@
 import logging
 import unittest
-from import_dart_data import esclient, ELASTICSEARCH_URL, ELASTIC_CERTFILE_FINGERPRINT, ELASTIC_PASSWORD, get_corp_info_from_dart, upload_corp_year_data, upload_corp_quarter_data
+from pathlib import Path
+
+from import_dart_data import esclient, ELASTICSEARCH_URL, ELASTIC_CERTFILE_FINGERPRINT, ELASTIC_PASSWORD, \
+    get_corp_info_from_dart, upload_corp_year_data, upload_corp_quarter_data, import_one_corp_data
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import streaming_bulk, scan
 import sys
+
+from manage_dart_file import DartFileManager
 
 
 class Test(unittest.TestCase):
@@ -32,7 +37,7 @@ class Test(unittest.TestCase):
         year = years[0]
         n = upload_corp_quarter_data(self.esclient, self.corp_code, data[year][0])
         self.assertGreaterEqual(n, 1)
-        
+
     def test_get_corp_year_info_from_dart(self):
         years = [2022]
         data = get_corp_info_from_dart(self.corp_code, years)
@@ -43,7 +48,12 @@ class Test(unittest.TestCase):
 
         ns = upload_corp_year_data(self.esclient, self.corp_code, data)
         self.assertGreaterEqual(len(ns), 1)
-        
+
+    def test_import_one_corp_data(self):
+        years = [2022]
+        num_data = import_one_corp_data(self.esclient, self.corp_code, years)
+        self.assertGreaterEqual(len(num_data), 1)
+
     def test_elasticsearch_client(self):
         info = self.esclient.info()
         print(info)
@@ -68,3 +78,24 @@ class Test(unittest.TestCase):
             n += 1
         logging.disable(logging.NOTSET)
         self.assertEqual(n, 97568)
+
+
+class TestDFM(unittest.TestCase):
+    def setUp(self) -> None:
+        self.dfm_load = DartFileManager(data_dir='data/dart-testing', corp_code="00126380", corp_name='삼성전자',
+                                        data_file_prefix='financial-statements')
+
+        self.dfm_save = DartFileManager(data_dir='data/dart-testing', corp_code="00126380", corp_name='삼성전자-testing',
+                                        data_file_prefix='financial-statements')
+
+    def test_load(self):
+        ysdata = self.dfm_load.load()
+        self.assertEqual(list(ysdata.keys())[0], 2022)
+        self.assertEqual(len(ysdata[2022]), 4)
+
+    def test_save(self):
+        ysdata = self.dfm_load.load()
+        self.dfm_save.save(ysdata)
+        zf = Path(self.dfm_save._zipfile)
+        self.assertTrue(zf.exists())
+        self.assertTrue(zf.lstat().st_size > 1024)
