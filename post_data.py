@@ -1,26 +1,21 @@
 #!/usr/bin/env python
 
-import argparse
-import collections
 import json
-from pathlib import Path
+import zipfile
 from pprint import pprint
 import sys
 import pendulum
 import requests
-from requests import get  # to make GET request
 from bs4 import BeautifulSoup
-from dotenv import dotenv_values
-import os
 import time
 import logging
 import coloredlogs
-import subprocess
 from tqdm import tqdm
 from elasticsearch import Elasticsearch, NotFoundError
-from elasticsearch.helpers import streaming_bulk, scan
+from elasticsearch.helpers import streaming_bulk
 
-from manage_dart_file import DartFileManager
+from config import DART_RESULT_DIR, ELASTIC_USER, ELASTIC_PASSWORD, ELASTIC_CERTFILE_FINGERPRINT, \
+    ELASTICSEARCH_URL, QUARTER_CODES
 
 logfmt = "%(asctime)s %(levelname)s %(message)s"
 coloredlogs.install(fmt=logfmt)
@@ -35,60 +30,6 @@ logger = logging.getLogger()
 
 # load_dotenv()
 
-config = {
-    # **dotenv_values("../docker-elk/.env"),  # load shared development variables
-    **dotenv_values(".env"),  # load sensitive variables
-    **os.environ,  # override loaded values with environment variables
-}
-
-DART_API_KEY = config['DART_API_KEY']
-DART_RESULT_DIR = config['DART_RESULT_DIR']
-ELASTIC_USER = config['ELASTIC_USER']
-ELASTIC_PASSWORD = config['ELASTIC_PASSWORD']
-ELASTIC_CERTFILE = config['ELASTIC_CERTFILE']
-ELASTIC_CERTFILE_FINGERPRINT = config['ELASTIC_CERTFILE_FINGERPRINT']
-ELASTICSEARCH_URL = config['ELASTICSEARCH_URL']
-
-dart_base_params = {
-    "crtfc_key": DART_API_KEY,
-}
-
-dart_params = {
-    # 보고서 리스트
-    "list": {
-        # 검색시작 접수일자(YYYYMMDD)
-        "bgn_de": None,
-        "end_de": None,
-        # 최종보고서만 검색여부(Y or N)
-        "last_reprt_at": "N",
-        # 공시유형 A : 정기공시
-        "pblntf_ty": "A",
-        # 접수일자: date
-        # 회사명: crp
-        # 보고서명: rpt
-        # ※ 기본값: date
-        "sort": "crp",
-        # 오름차순(asc), 내림차순(desc)
-        "sort_mth": "asc",
-        # 페이지 번호(1~n) 기본값 : 1
-        "page_no": "1",
-        # 페이지당 건수(1~100) 기본값 : 10, 최대값 : 100
-        "page_count": "100"
-    },
-    # 단일회사 전체 재무제표
-    "fnlttSinglAcntAll": {
-        # bsns_year	사업연도	STRING(4)	Y	사업연도(4자리) ※ 2015년 이후 부터 정보제공
-        'bsns_year': None,
-        # 1분기보고서 : 11013
-        # 반기보고서 : 11012
-        # 3분기보고서 : 11014
-        # 사업보고서 : 11011
-        'reprt_code': "11011",
-        # CFS:연결재무제표, OFS:재무제표
-        'fs_div': 'OFS'
-    }
-}
-
 elastic_session = requests.Session()
 elastic_session.auth = (ELASTIC_USER, ELASTIC_PASSWORD)
 # elastic_session.verify = ELASTIC_CERTFILE
@@ -101,13 +42,19 @@ esclient = Elasticsearch(
     basic_auth=(ELASTIC_USER, ELASTIC_PASSWORD)
 )
 
-QUARTER_CODES = ['11013', '11012', '11014', '11011']
-
 
 def parse_corp_code(filename):
-    with open(filename) as fd:
-        logger.info(f'Parsing {filename}')
-        soup = BeautifulSoup(fd.read(), features="xml")
+    """
+
+    Args:
+        filename: zipfile path
+
+    Returns:
+
+    """
+    logger.info(f'Parsing {filename}')
+    zf = zipfile.ZipFile(filename)
+    soup = BeautifulSoup(zf.read('CORPCODE.xml'), features="xml")
     return soup.result.find_all('list')
 
 
@@ -164,133 +111,14 @@ def parse_corp_code_OLD(filename, do_post):
                                  headers={'Content-Type': 'application/json'})
         if r.status_code == requests.codes.ok:
             logger.info('Posting OK')
-            nimported = check_corp_code_imported()
+            nimported = query_corp_code_imported()
             logger.info(f'Posted data : {nimported}')
         else:
             logger.error(f'{r.status_code}')
             r.raise_for_status()
 
 
-def download(url, params, output_filename):
-    with requests.Session() as s:
-        r = s.get(url, params=params)
-        if output_filename:
-            p = Path(output_filename)
-            if not p.parent.exists():
-                p.parent.mkdir()
-            p.write_bytes(r.content)
-            # with open(output_filename, mode) as fd:
-            #     fd.write(r.content)
-            # p=Path(output_filename)
-            # if p.suffix == '.json':
-            #     p2=
-            #     subprocess.run(['jq', '.', '<', ])
-
-        # actually dict
-        return r.json()
-
-
 # 고유번호
-def fetch_corp_code_from_dart(output_filename):
-    """고유번호
-    
-        https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019018
-
-    Args:
-        output_filename (_type_): _description_
-    """
-    url = "https://opendart.fss.or.kr/api/corpCode.xml"
-    if os.path.exists(output_filename):
-        logger.info(f'We have {output_filename}. Fetching corp_code is skipped.')
-    else:
-        logger.info('Querying corp_code ... ')
-        params = dart_base_params | {}
-        download(url, params, output_filename)
-
-    p = Path(output_filename)
-    px = p.with_name('CORPCODE.xml')
-    if not px.exists():
-        subprocess.run(f'unzip {p.absolute()} -d {p.parent}', shell=True)
-
-    if not px.exists():
-        logger.error(f'Cannot generate file : {p.absolute()}')
-
-
-def get_corp_data_doc(corp_code):
-    # r = elastic_session.get(ELASTICSEARCH_URL + '/corp_code/_search',
-    #                          data={
-    #                              "query": {
-    #                                 "term": {
-    #                                      "corp_code": corp_code
-    #                                  }
-    #                                 }
-    #                              },
-    #                          headers={'Content-Type': 'application/json'})
-    resp = esclient.get(index="corp_code", id=corp_code)
-    return resp['_source']
-
-
-def get_year_corp_data_from_dart(corp_code, year: int):
-    url = 'https://opendart.fss.or.kr/api/fnlttSinglAcntAll.json'
-    # output_filename = f'{DART_RESULT_DIR}/corp_data/{corp_code}-{corp_name}/financial-statement-{year}-<quarter>.json'
-    # p = Path(output_filename)
-    # if p.exists():
-    #     logger.warning(f'{p.name} exists. Skipping fetching.')
-    #
-    # if not p.parent.exists():
-    #     os.makedirs(p.parent)
-    dart_query_params = dart_base_params | dart_params['fnlttSinglAcntAll']
-    dart_query_params['corp_code'] = str(corp_code)
-    dart_query_params['bsns_year'] = str(year)
-    # 1분기보고서 : 11013
-    # 반기보고서 : 11012
-    # 3분기보고서 : 11014
-    # 사업보고서 : 11011
-    ydata = []
-    # rt_dict = dict(zip(QUARTER_CODES, [f'{i}Q' for i in range(1, 5)]))
-    for rt in QUARTER_CODES:
-        dart_query_params['reprt_code'] = rt
-        # of = output_filename.replace('<quarter>', rt_dict[rt])
-        of = None
-        d = download(url, dart_query_params, of)
-        ydata.append(d)
-
-    return ydata
-
-
-def get_corp_data_from_dart(corp_code, corp_name, years) -> dict:
-    """get_corp_info_from_dart
-
-    공시정보:
-    https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019001
-    기업개황:
-    https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019002
-    공시서류원본파일:
-    https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019003
-
-    Args:
-        corp_name:
-        corp_code (_type_): _description_
-        years (_type_): _description_
-
-    Returns:
-        dict : year<int>, [1q, 2q, ..., 4q]
-    """
-
-    logger.info('Querying Financial Statement ... ')
-    dfm = DartFileManager(data_dir=DART_RESULT_DIR, corp_code=corp_code, corp_name=corp_name,
-                          data_file_prefix='financial-statements', logger=logger)
-    corp_data = dfm.load()
-    if corp_data is None:
-        corp_data = dict()
-
-    for y in years:
-        if y not in corp_data:
-            corp_data[y] = get_year_corp_data_from_dart(corp_code, y)
-
-    dfm.save(corp_data)
-
-    return corp_data
 
 
 def analyze_corp_info(data):
@@ -302,7 +130,7 @@ def analyze_corp_info(data):
                 pprint(d)
 
 
-def check_corp_code_imported():
+def query_corp_code_imported():
     #
     # low-level api client
     #
@@ -477,30 +305,6 @@ def delete_documents(client, indices):
         pass
 
 
-def import_corp_code(client):
-    corp_code_filename = f'{DART_RESULT_DIR}/CORPCODE.xml'
-    corp_code_output_filename = f'{DART_RESULT_DIR}/corp-code.zip'
-
-    logger.info('Fetching corp code from DART system')
-    fetch_corp_code_from_dart(corp_code_output_filename)
-
-    logger.info('Checking index status ... ')
-    if check_corp_code_imported() == 0:
-        logger.info('Parsing corp code')
-        corp_code_list = parse_corp_code(corp_code_filename)
-        number_of_docs = len(corp_code_list)
-        progress = tqdm(unit="docs", total=number_of_docs)
-        successes = 0
-        logging.disable(sys.maxsize)
-        for ok, action in streaming_bulk(
-                client=client, index="corp_code", actions=generate_corp_code_doc(corp_code_list),
-        ):
-            progress.update(1)
-            successes += ok
-        logging.disable(logging.NOTSET)
-        # print("Indexed %d/%d documents" % (successes, number_of_docs))
-
-
 def get_fetched_docs():
     """이미 fetch된 doc 리스트 구하기
     
@@ -510,100 +314,32 @@ def get_fetched_docs():
     pass
 
 
-def has_corp_data(client, corp_code, year: int) -> list:
-    # 연단위로만 체크하자
-    # resp = es.search(index="test-index", query={"match_all": {}})
-    # print("Got %d Hits:" % resp['hits']['total']['value'])
-    # for hit in resp['hits']['hits']:
-    #     print("%(timestamp)s %(author)s: %(text)s" % hit["_source"])
-    hits = []
-    for qc in QUARTER_CODES:
-        resp = client.search(index="corp_code", query={
-            "bool": {
-                "must": [
-                    {"term": {"corp_code": corp_code}},
-                    {"term": {"bsns_year": str(year)}},
-                    {"term": {"reprt_code": qc}}
-                ]
-            }
-        })
-
-        hits.append(resp['hits']['total']['value'])
-
-    return hits
-
-
-def import_one_corp_data(client, corp_code, corp_name, years) -> list:
-    ns = []
-
-    dfm = DartFileManager(data_dir=DART_RESULT_DIR, corp_code=corp_code, corp_name=corp_name,
-                          data_file_prefix='financial-statements', logger=logger)
-    corp_data = dict()
-    for year in years:
-        hits = has_corp_data(client, corp_code, year)
-        if len(hits) > 0:
-            logger.info(f'remote corp_data {corp_name}-{year} exists ')
-            continue
-        # check if corp is already imported
-        if dfm.has_year_data(year):
-            logger.info(f'local corp_data {corp_name}-{year} exists ')
-        else:
-            year_corp_data = get_year_corp_data_from_dart(corp_code, year)
-            corp_data.update({year: year_corp_data})
-            n = upload_year_corp_data(client, corp_code, year_corp_data)
-        ns.append(n)
-    return ns
+# def post_quarter_corp_data_bulk(client, data: dict) -> int:
+#     if type(data) != dict:
+#         logger.error(f'Data type is not dict : {str(type(data))}')
+#         return -1
+#
+#     if data['status'] != '000':
+#         logger.error(f'Status code is {data["status"]}({data["message"]})')
+#         return -1
+#
+#     docs = data['list']
+#     number_of_docs = len(docs)
+#     progress = tqdm(unit="docs", total=number_of_docs)
+#     successes = 0
+#     logging.disable(sys.maxsize)
+#     for ok, action in streaming_bulk(
+#             client=client, index="corp_data", actions=(d for d in docs),
+#     ):
+#         progress.update(1)
+#         successes += ok
+#     logging.disable(logging.NOTSET)
+#     # print("Indexed %d/%d documents" % (successes, number_of_docs))
+#
+#     return successes
 
 
-def import_all_corp_data(client) -> dict:
-    nc = collections.defaultdict(list)
-    years = list(range(2017, 2023))
-    quarters = list(range(1, 5))
-    its = scan(client, query={"query": {"match_all": {}}}, index="corp_code")
-    for doc in its:
-        corp_code = doc['_source']['corp_code']
-        corp_name = get_corp_data_doc(corp_code)['corp_name']
-        # [
-        #   [
-        #     [-1, -1, -1, -1],
-        #     [-1, -1, -1, -1],
-        #     [-1, -1, -1, -1],
-        #     [-1, -1, -1, -1],
-        #     [-1, -1, -1, -1],
-        #     [-1, -1, -1, -1]
-        #   ]
-        # ]
-        num_data = import_one_corp_data(client, corp_code, corp_name, years)
-        nc['corp_code'] = num_data
-    return nc
-
-
-def upload_quarter_corp_data_bulk(client, data: dict) -> int:
-    if type(data) != dict:
-        logger.error(f'Data type is not dict : {str(type(data))}')
-        return -1
-
-    if data['status'] != '000':
-        logger.error(f'Status code is {data["status"]}({data["message"]})')
-        return -1
-
-    docs = data['list']
-    number_of_docs = len(docs)
-    progress = tqdm(unit="docs", total=number_of_docs)
-    successes = 0
-    logging.disable(sys.maxsize)
-    for ok, action in streaming_bulk(
-            client=client, index="corp_data", actions=(d for d in docs),
-    ):
-        progress.update(1)
-        successes += ok
-    logging.disable(logging.NOTSET)
-    # print("Indexed %d/%d documents" % (successes, number_of_docs))
-
-    return successes
-
-
-def upload_quarter_corp_data_history(client, corp_code, qdata: dict, successes):
+def post_quarter_corp_data_history(client, corp_code, qdata: dict, successes):
     docs = qdata['list']
 
     '''
@@ -641,7 +377,7 @@ def _get_time_frame(doc) -> dict:
     return doc
 
 
-def upload_quarter_corp_data(client, corp_code, qdata: dict) -> int:
+def post_quarter_corp_data(client, corp_code, qdata: dict) -> int:
     if type(qdata) != dict:
         logger.error(f'Data type is not dict : {str(type(qdata))}')
         return -1
@@ -667,57 +403,40 @@ def upload_quarter_corp_data(client, corp_code, qdata: dict) -> int:
     logging.disable(logging.NOTSET)
 
     # logger.info("Indexed %d/%d documents" % (successes, number_of_docs))
-    upload_quarter_corp_data_history(client, corp_code, qdata, successes)
+    post_quarter_corp_data_history(client, corp_code, qdata, successes)
 
     return successes
 
 
-def upload_year_corp_data(client, corp_code, ydata: list):
+def post_year_corp_data(client, corp_code, ydata: list):
     ns = []
     for qdata in ydata:
-        ns.append(upload_quarter_corp_data(client, corp_code, qdata))
+        ns.append(post_quarter_corp_data(client, corp_code, qdata))
     return ns
 
 
-def main():
-    indices = ['corp_code', 'corp_data']
-    parser = argparse.ArgumentParser(description='dart importer')
-    parser.add_argument(
-        '--create-index',
-        help='Create ElasticSearch Index. Example: ./import_dart_data.py --create-index corp_code corp_data',
-        choices=indices, nargs="+", default=[])
-    parser.add_argument(
-        '--delete-documents', help='Delete all documents',
-        choices=indices, nargs="+", default=[])
-    parser.add_argument(
-        '--import-data', help='Import data',
-        choices=indices, nargs="+", default=[])
-    # parser.add_argument(
-    #     '--import-corp-data', help='Import corp data(filings, ...)', action='store_true')
+def post_corp_code(client):
+    corp_code_output_filename = f'{DART_RESULT_DIR}/corp-code.zip'
 
-    args = parser.parse_args()
+    logger.info('Checking index status ... ')
+    n = query_corp_code_imported()
+    if n == 0:
+        logger.info('Parsing corp code')
+        corp_code_list = parse_corp_code(corp_code_output_filename)
+        number_of_docs = len(corp_code_list)
+        progress = tqdm(unit="docs", total=number_of_docs)
+        successes = 0
+        logging.disable(sys.maxsize)
+        for ok, action in streaming_bulk(
+                client=client, index="corp_code", actions=generate_corp_code_doc(corp_code_list),
+        ):
+            progress.update(1)
+            successes += ok
+        logging.disable(logging.NOTSET)
+        # print("Indexed %d/%d documents" % (successes, number_of_docs))
 
-    if len(args.create_index) > 0:
-        create_index(esclient, args.create_index)
-
-    if len(args.delete_documents):
-        ans = input("WARNING: Delete all data? Type 'delete' to proceed.\nYour choice: ")
-        if ans.strip().lower() == 'delete':
-            delete_documents(esclient, args.delete_documents)
-        else:
-            print('Cancelled.')
-
-    if 'corp_code' in args.import_data:
-        import_corp_code(esclient)
-
-    if 'corp_data' in args.import_data:
-        import_all_corp_data(esclient)
-
-    # # 삼성전자
-    # data = get_corp_info_from_dart('00126380', list(range(2021, 2023)))
-    # analyze_corp_info(data)
-    # elastic_session.close()
+    return n
 
 
-if __name__ == '__main__':
-    main()
+def post_corp_data(client):
+    pass

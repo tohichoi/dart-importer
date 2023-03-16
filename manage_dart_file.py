@@ -50,7 +50,11 @@ class DartFileManager:
         return None
 
     def has_year_data(self, year):
-        zf = zipfile.ZipFile(self._zipfile, mode='r')
+        try:
+            zf = zipfile.ZipFile(self._zipfile, mode='r')
+        except FileNotFoundError:
+            return False
+
         for f in zf.namelist():
             m = re.match(self._prefix + r'-([0-9]{4})-([1-4])Q.json', f)
             if m:
@@ -110,3 +114,5 @@ class DartFileManager:
                 zf.write(f, arcname=f.name)
                 f.unlink()
         zf.close()
+
+        return self._zipfile
