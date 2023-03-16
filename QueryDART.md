@@ -20,3 +20,12 @@ curl -X POST -u "$DARTID:$(cat dart-password.txt)" -b dart-cookie.txt https://op
 -d "adLimitAt=N" \
 -d "creatDt=2023-03-13"
 ```
+
+## 이용현황
+
+https://opendart.fss.or.kr/mng/apiUsageStatusView.do
+
+
+## 기업개황
+
+https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019002

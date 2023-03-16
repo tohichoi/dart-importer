@@ -55,7 +55,7 @@ def parse_corp_code(filename):
     logger.info(f'Parsing {filename}')
     zf = zipfile.ZipFile(filename)
     soup = BeautifulSoup(zf.read('CORPCODE.xml'), features="xml")
-    return soup.result.find_all('list')
+    return [t for t in soup.result.find_all('list') if len(t.stock_code.text.strip()) > 0]
 
 
 def generate_corp_code_doc(code_info_list):
@@ -72,12 +72,17 @@ def generate_corp_code_doc(code_info_list):
     for ci in code_info_list:
         # code_info[ci.corp_name.text]
         doc = {
-            '_id': ci.corp_code.text,
-            'corp_code': ci.corp_code.text,
-            'corp_name': ci.corp_name.text,
-            'stock_code': ci.stock_code.text,
-            'modify_date': ci.modify_date.text
+            '_id': ci.corp_code.text.strip(),
+            'corp_code': ci.corp_code.text.strip(),
+            'corp_name': ci.corp_name.text.strip(),
+            'stock_code': ci.stock_code.text.strip(),
+            'modify_date': ci.modify_date.text.strip()
         }
+
+        # 주식코드가 없는 회사는 빼자
+        # parse_corp_code() 에서 체크(데이터 수 계산할 때 부정확)
+        # if len(doc['stock_code']) < 1:
+        #     continue
 
         yield doc
 
