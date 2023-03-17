@@ -47,7 +47,7 @@ def main():
         fetch_all_corp_data(esclient)
 
     if 'corp_data' in args.post_data:
-        fetch_all_corp_data(esclient)
+        post_all_corp_data(esclient)
 
     # # 삼성전자
     # data = get_corp_info_from_dart('00126380', list(range(2021, 2023)))

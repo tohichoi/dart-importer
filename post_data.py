@@ -443,5 +443,5 @@ def post_corp_code(client):
     return n
 
 
-def post_corp_data(client):
+def post_all_corp_data(client):
     pass
