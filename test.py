@@ -1,18 +1,15 @@
 import logging
-import unittest
+import sys
 import zipfile
 from pathlib import Path
 from unittest import TestCase
 
-import config
-from post_data import esclient, post_year_corp_data, post_quarter_corp_data, post_corp_code
-from config import ELASTIC_PASSWORD, ELASTIC_CERTFILE_FINGERPRINT, ELASTICSEARCH_URL, DART_CORPCODE_DATA_FILE
-from fetch_data import fetch_one_corp_data, fetch_corp_data, fetch_corp_code
-from elasticsearch import Elasticsearch
-from elasticsearch.helpers import streaming_bulk, scan
-import sys
+from elasticsearch.helpers import scan
 
+from config import DART_CORPCODE_DATA_FILE
+from fetch_data import fetch_one_corp_data, fetch_corp_data, fetch_corp_code
 from manage_dart_file import DartFileManager
+from post_data import esclient, post_year_corp_data, post_quarter_corp_data, post_corp_code
 
 
 class TestFetchCorpCode(TestCase):

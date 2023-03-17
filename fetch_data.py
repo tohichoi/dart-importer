@@ -1,19 +1,15 @@
 import collections
-import logging
 import os
-import subprocess
-import sys
-import time
 from pathlib import Path
 
 import requests
-from elasticsearch.helpers import streaming_bulk, scan
+from elasticsearch.helpers import scan
 from tqdm import tqdm
 
-from post_data import logger
 from config import DART_RESULT_DIR, dart_base_params, dart_params, QUARTER_CODES, DART_CORPCODE_DATA_FILE
 from helpers import query_corp_data, query_corp_code_doc, query_corp_code_count
 from manage_dart_file import DartFileManager
+from post_data import logger
 
 
 def fetch_corp_code():
