@@ -51,4 +51,4 @@ def query_corp_code_doc(client, corp_code):
     resp = client.get(index="corp_code", id=corp_code)
     logging.disable(logging.NOTSET)
 
-    return resp['_source']
+    return resp
