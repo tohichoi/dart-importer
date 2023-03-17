@@ -1,9 +1,12 @@
 #!/usr/bin/env python
+import json
 import os
 import re
+import sys
 import zipfile
 from collections import defaultdict
 from pathlib import Path
+import logging
 
 
 class DartFileManager:
@@ -110,9 +113,65 @@ class DartFileManager:
             for i, qdata in enumerate(ydata):
                 f = cd.joinpath(f'{prefix}-{year}-{i + 1}Q.json')
                 with open(f, 'w') as fd:
-                    fd.write(str(qdata))
+                    fd.write(json.dumps(qdata))
                 zf.write(f, arcname=f.name)
                 f.unlink()
         zf.close()
 
         return self._zipfile
+
+
+class DartFileManagerEx(DartFileManager):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def _extract_config(self, zp):
+        # dart/corp_data/<corp_code>-<corp_name>/financial_statements-([0-9]+)-[^\.]+.zip
+        m = re.match(r".*/([^0-9]+)-([0-9]+)-([^\.]+)\.zip", zp)
+        if m:
+            self.config.update({'data_file_prefix': m.group(1)})
+            self.config.update({'corp_code': m.group(2)})
+            self.config.update({'corp_name': m.group(3)})
+            return True
+        return False
+
+    def is_valid(self):
+        corp_data = self.load()
+        if corp_data:
+            return self._is_valid_corp_data(self.load())
+        return False
+
+    def _is_valid_corp_data(self, corp_data):
+        status = []
+        n = 0
+        for year, ydata in corp_data.items():
+            n += len(ydata)
+            for qdata in ydata:
+                qjdata = json.loads(qdata)
+                # https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS003&apiId=2019020
+                # 000 :정상
+                # 013 :조회된 데이타가 없습니다.
+                status.append(1 if qjdata['status'] in ['000', '013'] else 0)
+
+        return sum(status) == n
+
+    def clean_all_data(self, dry_run=1):
+        r = Path(self.config['data_dir'])
+        for zp in r.rglob('*.zip'):
+            if not self._extract_config(str(zp)):
+                continue
+            corp_data = self.load()
+
+            if not self._is_valid_corp_data(corp_data):
+                logging.info(f'INVALID : {self.config["corp_code"]}:{self.config["corp_name"]}')
+                if not dry_run:
+                    zp.unlink()
+                    zp.parent.rmdir()
+            logging.info(f'VALID : {self.config["corp_code"]}:{self.config["corp_name"]}')
+
+
+if __name__ == "__main__":
+    data_dir = sys.argv[1]
+    dry_run = int(sys.argv[2])
+    dfc = DartFileCleanerEx(data_dir=data_dir)
+    dfc.clean_all_data(dry_run=dry_run)

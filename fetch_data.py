@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from ssl import SSLZeroReturnError
 
 import requests
 from elasticsearch.helpers import streaming_bulk, scan
@@ -13,17 +14,26 @@ from tqdm import tqdm
 from post_data import logger
 from config import DART_RESULT_DIR, dart_base_params, dart_params, QUARTER_CODES, DART_CORPCODE_DATA_FILE
 from helpers import query_corp_data, query_corp_code_doc, query_corp_code_count
-from manage_dart_file import DartFileManager
+from manage_dart_file import DartFileManagerEx
+
+
+class DARTMaxUsageError(Exception):
+    pass
+
+
+def check_max_usage(r: dict):
+    if r['status'] == '020':
+        return r['message']
+    return None
 
 
 def fetch_corp_code():
-
     logger.info('Fetching corp code from DART system')
     fetch_corp_code_from_dart(DART_CORPCODE_DATA_FILE)
 
 
 def fetch_one_corp_data(client, corp_code, corp_name, years) -> dict:
-    dfm = DartFileManager(data_dir=DART_RESULT_DIR, corp_code=corp_code, corp_name=corp_name,
+    dfm = DartFileManagerEx(data_dir=DART_RESULT_DIR, corp_code=corp_code, corp_name=corp_name,
                           data_file_prefix='financial-statements', logger=logger)
     corp_data = dict()
     for year in years:
@@ -48,13 +58,29 @@ def fetch_one_corp_data(client, corp_code, corp_name, years) -> dict:
 def fetch_all_corp_data(client) -> dict:
     nc = collections.defaultdict(list)
     years = list(range(2017, 2023))
-    quarters = list(range(1, 5))
-    its = scan(client, query={"query": {"match_all": {}}}, index="corp_code", scroll="360m")
-    total = query_corp_code_count(client)
+    # quarters = list(range(1, 5))
+    # its = scan(client, query={"query": {"match_all": {}}}, index="corp_code", scroll="360m")
+    check_its = scan(client, query={"query": {"match_all": {}}}, index="corp_code", scroll="360m")
+    # 00126380 : 삼성전자
+    # 00128564-삼천리M&C
+    # check_its = [query_corp_code_doc(client, cc) for cc in ["00126380", "00309503", "00162461"]]
+    its = []
+    # check local file
+    for doc in check_its:
+        corp_code = doc['_source']['corp_code']
+        corp_name = query_corp_code_doc(client, corp_code)['_source']['corp_name']
+        dfm = DartFileManagerEx(data_dir=DART_RESULT_DIR, corp_code=corp_code, corp_name=corp_name,
+                                data_file_prefix='financial-statements', logger=logger)
+        if dfm.is_valid():
+            continue
+        its.append(doc)
+
+    # total = query_corp_code_count(client)
+    total = len(its)
     pbar = tqdm(desc='Fetching CorpData', total=total)
     for doc in its:
         corp_code = doc['_source']['corp_code']
-        corp_name = query_corp_code_doc(client, corp_code)['corp_name']
+        corp_name = query_corp_code_doc(client, corp_code)['_source']['corp_name']
         pbar.set_description(corp_name)
         # [
         #   [
@@ -91,7 +117,7 @@ def fetch_corp_data(corp_code, corp_name, years) -> dict:
     """
 
     logger.info('Querying Financial Statement ... ')
-    dfm = DartFileManager(data_dir=DART_RESULT_DIR, corp_code=corp_code, corp_name=corp_name,
+    dfm = DartFileManagerEx(data_dir=DART_RESULT_DIR, corp_code=corp_code, corp_name=corp_name,
                           data_file_prefix='financial-statements', logger=logger)
     corp_data = dfm.load()
     if corp_data is None:
@@ -129,6 +155,9 @@ def fetch_year_corp_data(corp_code, year: int) -> list:
         # of = output_filename.replace('<quarter>', rt_dict[rt])
         of = None
         d = download(url, dart_query_params, of)
+        max_usage = check_max_usage(d)
+        if max_usage:
+            raise DARTMaxUsageError(max_usage)
         ydata.append(d)
 
     return ydata

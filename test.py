@@ -12,7 +12,17 @@ from elasticsearch import Elasticsearch
 from elasticsearch.helpers import streaming_bulk, scan
 import sys
 
-from manage_dart_file import DartFileManager
+from manage_dart_file import DartFileManager, DartFileCleanerEx
+
+
+class TestDartFileCleaner(TestCase):
+    def test(self):
+        # data_dir = sys.argv[1]
+        # dry_run = int(sys.argv[2])
+        data_dir = 'data/dart'
+        dry_run = 1
+        dfc = DartFileCleanerEx(data_dir=data_dir)
+        dfc.clean_all_data(dry_run=dry_run)
 
 
 class TestFetchCorpCode(TestCase):
@@ -144,3 +154,7 @@ class TestDFM(TestCase):
         zf = Path(self.dfm_save._zipfile)
         self.assertTrue(zf.exists())
         self.assertTrue(zf.lstat().st_size > 1024)
+
+
+if __name__ == '__main__':
+    unittest.main()
