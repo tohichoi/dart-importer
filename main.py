@@ -3,7 +3,7 @@
 import argparse
 
 from fetch_data import fetch_corp_code, fetch_all_corp_data
-from post_data import create_index, esclient, delete_documents, post_corp_code
+from post_data import create_index, esclient, delete_documents, post_corp_code, post_all_corp_data
 
 
 def main():

@@ -49,7 +49,7 @@ def fetch_all_corp_data(client) -> dict:
     nc = collections.defaultdict(list)
     years = list(range(2017, 2023))
     quarters = list(range(1, 5))
-    its = scan(client, query={"query": {"match_all": {}}}, index="corp_code")
+    its = scan(client, query={"query": {"match_all": {}}}, index="corp_code", scroll="360m")
     total = query_corp_code_count(client)
     pbar = tqdm(desc='Fetching CorpData', total=total)
     for doc in its:
