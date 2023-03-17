@@ -160,19 +160,23 @@ def fetch_corp_code_from_dart(output_filename):
 
 
 def download(url, params, output_filename):
-    with requests.Session() as s:
-        r = s.get(url, params=params)
-        if output_filename:
-            p = Path(output_filename)
-            if not p.parent.exists():
-                p.parent.mkdir()
-            p.write_bytes(r.content)
-            # with open(output_filename, mode) as fd:
-            #     fd.write(r.content)
-            # p=Path(output_filename)
-            # if p.suffix == '.json':
-            #     p2=
-            #     subprocess.run(['jq', '.', '<', ])
-
-        # actually dict
-        return r.json()
+    retry = 5
+    for i in range(retry):
+        try:
+            r = requests.get(url, params=params)
+            if output_filename:
+                p = Path(output_filename)
+                if not p.parent.exists():
+                    p.parent.mkdir()
+                p.write_bytes(r.content)
+                # with open(output_filename, mode) as fd:
+                #     fd.write(r.content)
+                # p=Path(output_filename)
+                # if p.suffix == '.json':
+                #     p2=
+                #     subprocess.run(['jq', '.', '<', ])
+            # actually dict
+            return r.json()
+        except SSLZeroReturnError as e:
+            time.sleep(5)
+            continue
