@@ -7,7 +7,7 @@ from post_data import create_index, esclient, delete_documents, post_corp_code, 
 
 
 def main():
-    indices = ['corp_code', 'corp_data']
+    indices = ['corp_code', 'corp_data', 'corp_info']
     parser = argparse.ArgumentParser(description='dart importer')
     parser.add_argument(
         '--create-index',

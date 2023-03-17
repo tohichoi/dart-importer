@@ -41,6 +41,10 @@ dart_params = {
         # 페이지당 건수(1~100) 기본값 : 10, 최대값 : 100
         "page_count": "100"
     },
+    "corp_info": {
+        # corp_code
+    },
+
     # 단일회사 전체 재무제표
     "fnlttSinglAcntAll": {
         # bsns_year	사업연도	STRING(4)	Y	사업연도(4자리) ※ 2015년 이후 부터 정보제공
