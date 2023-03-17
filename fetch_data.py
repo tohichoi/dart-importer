@@ -9,6 +9,7 @@ from ssl import SSLZeroReturnError
 
 import requests
 from elasticsearch.helpers import streaming_bulk, scan
+from requests.exceptions import SSLError
 from tqdm import tqdm
 
 from post_data import logger
@@ -34,7 +35,7 @@ def fetch_corp_code():
 
 def fetch_one_corp_data(client, corp_code, corp_name, years) -> dict:
     dfm = DartFileManagerEx(data_dir=DART_RESULT_DIR, corp_code=corp_code, corp_name=corp_name,
-                          data_file_prefix='financial-statements', logger=logger)
+                            data_file_prefix='financial-statements', logger=logger)
     corp_data = dict()
     for year in years:
         hits = query_corp_data(client, corp_code, year)
@@ -118,7 +119,7 @@ def fetch_corp_data(corp_code, corp_name, years) -> dict:
 
     logger.info('Querying Financial Statement ... ')
     dfm = DartFileManagerEx(data_dir=DART_RESULT_DIR, corp_code=corp_code, corp_name=corp_name,
-                          data_file_prefix='financial-statements', logger=logger)
+                            data_file_prefix='financial-statements', logger=logger)
     corp_data = dfm.load()
     if corp_data is None:
         corp_data = dict()
@@ -206,6 +207,7 @@ def download(url, params, output_filename):
                 #     subprocess.run(['jq', '.', '<', ])
             # actually dict
             return r.json()
-        except SSLZeroReturnError as e:
+
+        except (SSLZeroReturnError, SSLError) as e:
             time.sleep(5)
             continue

@@ -196,6 +196,41 @@ def create_index(client, indices):
             # If you try to create an index name(indices.create) that has already been created, the RequestError(400, 'resource_already_exists_exception)' will appear.
         )
 
+    # https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019002
+    if 'corp_info' in indices:
+        client.options(ignore_status=400).indices.create(
+            index="corp_info",
+            settings={"number_of_shards": 1},
+            mappings={
+                "properties": {
+                    "corp_code": {"type": "search_as_you_type"}, #"00126380",
+                    "corp_name": {"type": "search_as_you_type"}, #"삼성전자(주)",
+                    "corp_name_eng": {"type": "search_as_you_type"}, # "SAMSUNG ELECTRONICS CO,.LTD",
+                    "stock_name": {"type": "search_as_you_type"},  #"삼성전자",
+                    "stock_code": {"type": "text"},  #"005930",
+                    "ceo_nm": {"type": "search_as_you_type"},  #"한종희, 경계현",
+                    "corp_cls": {"type": "text"},  #"Y",
+                    "jurir_no": {"type": "text"},  #"1301110006246",
+                    "bizr_no": {"type": "text"},  #"1248100998",
+                    "adres": {"type": "search_as_you_type"},  #"경기도 수원시 영통구  삼성로 129 (매탄동)",
+                    "hm_url": {"type": "search_as_you_type"},  #"www.samsung.com/sec",
+                    "ir_url": {"type": "search_as_you_type"},  #"",
+                    "phn_no": {"type": "text"},  #"02-2255-0114",
+                    "fax_no": {"type": "text"},  #"031-200-7538",
+                    "induty_code": {"type": "text"},  #"264",
+                    "est_dt": {
+                        "type": "date",
+                        "format": "yyyyMMdd"},  #"19690113",
+                    "acc_mt": {"type": "text"},  #"12",
+                }
+            },
+            # ignore
+            # >It’s good to know: Use an ignore parameter with the one or more status codes you want to overlook when you want to avoid raising an exception.
+            # Troubleshooting the “400 Resource-Already-Exists” error message
+            # If you try to create an index name(indices.create) that has already been created, the RequestError(400, 'resource_already_exists_exception)' will appear.
+        )
+
+
     if 'corp_data' in indices:
         # https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS003&apiId=2019020
         # "rcept_no": "20220516001751",1
