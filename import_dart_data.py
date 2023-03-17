@@ -551,7 +551,7 @@ def import_one_corp_data(client, corp_code, corp_name, years) -> list:
             year_corp_data = get_year_corp_data_from_dart(corp_code, year)
             corp_data.update({year: year_corp_data})
             n = upload_year_corp_data(client, corp_code, year_corp_data)
-        ns.append(n)
+            ns.append(n)
     return ns
 
 
