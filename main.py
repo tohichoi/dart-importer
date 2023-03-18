@@ -2,8 +2,9 @@
 
 import argparse
 
-from fetch_data import fetch_corp_code, fetch_all_corp_data
-from post_data import create_index, esclient, delete_documents, post_corp_code, post_all_corp_data
+from fetch_data import fetch_corp_code, fetch_all_corp_data, fetch_corp_info
+from helpers import query_corp_code_list
+from post_data import create_index, esclient, delete_documents, post_corp_code, post_all_corp_data, post_corp_info
 
 
 def main():
@@ -37,12 +38,21 @@ def main():
         else:
             print('Cancelled.')
 
+    # corp_code
     if 'corp_code' in args.fetch_data:
         fetch_corp_code()
 
     if 'corp_code' in args.post_data:
         post_corp_code(esclient)
 
+    # corp_code
+    if 'corp_info' in args.fetch_data:
+        fetch_corp_info(query_corp_code_list(esclient))
+
+    if 'corp_info' in args.post_data:
+        post_corp_info(esclient)
+
+    # corp_data
     if 'corp_data' in args.fetch_data:
         fetch_all_corp_data(esclient)
 
