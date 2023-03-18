@@ -29,8 +29,31 @@ def check_max_usage(r: dict):
 
 
 def fetch_corp_code():
+    """고유번호
+
+        https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019018
+
+    Args:
+        output_filename (_type_): _description_
+    """
     logger.info('Fetching corp code from DART system')
-    fetch_corp_code_from_dart(DART_CORPCODE_DATA_FILE)
+    output_filename = DART_CORPCODE_DATA_FILE
+
+    url = "https://opendart.fss.or.kr/api/corpCode.xml"
+    if os.path.exists(output_filename):
+        logger.info(f'We have {output_filename}. Fetching corp_code is skipped.')
+    else:
+        logger.info('Querying corp_code ... ')
+        params = dart_base_params | {}
+        download(url, params, output_filename)
+
+    # p = Path(output_filename)
+    # px = p.with_name('CORPCODE.xml')
+    # if not px.exists():
+    #     subprocess.run(f'unzip {p.absolute()} -d {p.parent}', shell=True)
+    #
+    # if not px.exists():
+    #     logger.error(f'Cannot generate file : {p.absolute()}')
 
 
 def fetch_one_corp_data(client, corp_code, corp_name, years) -> dict:
@@ -83,16 +106,6 @@ def fetch_all_corp_data(client) -> dict:
         corp_code = doc['_source']['corp_code']
         corp_name = query_corp_code_doc(client, corp_code)['_source']['corp_name']
         pbar.set_description(corp_name)
-        # [
-        #   [
-        #     [-1, -1, -1, -1],
-        #     [-1, -1, -1, -1],
-        #     [-1, -1, -1, -1],
-        #     [-1, -1, -1, -1],
-        #     [-1, -1, -1, -1],
-        #     [-1, -1, -1, -1]
-        #   ]
-        # ]
         fetch_one_corp_data(client, corp_code, corp_name, years)
         pbar.update(1)
     return nc
@@ -164,7 +177,7 @@ def fetch_year_corp_data(corp_code, year: int) -> list:
     return ydata
 
 
-def fetch_corp_code_from_dart(output_filename):
+def fetch_corp_info(corp_codes):
     """고유번호
 
         https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019018
@@ -172,21 +185,19 @@ def fetch_corp_code_from_dart(output_filename):
     Args:
         output_filename (_type_): _description_
     """
-    url = "https://opendart.fss.or.kr/api/corpCode.xml"
-    if os.path.exists(output_filename):
-        logger.info(f'We have {output_filename}. Fetching corp_code is skipped.')
-    else:
-        logger.info('Querying corp_code ... ')
-        params = dart_base_params | {}
-        download(url, params, output_filename)
-
-    # p = Path(output_filename)
-    # px = p.with_name('CORPCODE.xml')
-    # if not px.exists():
-    #     subprocess.run(f'unzip {p.absolute()} -d {p.parent}', shell=True)
-    #
-    # if not px.exists():
-    #     logger.error(f'Cannot generate file : {p.absolute()}')
+    # check_its = scan(client, query={"query": {"match_all": {}}}, index="corp_code", scroll="360m")
+    pbar = tqdm('Fetching corp_info', total=len(corp_codes))
+    for corp_code in corp_codes:
+        output_filename = Path(DART_RESULT_DIR).joinpath(f'corp_info/{corp_code}.json')
+        pbar.set_description(corp_code)
+        if Path.exists(output_filename):
+            logger.info(f'We have {output_filename}. Fetching is skipped.')
+        else:
+            url = "https://opendart.fss.or.kr/api/company.json"
+            # logger.info('Querying corp_code ... ')
+            params = dart_base_params | {'corp_code': corp_code}
+            download(url, params, output_filename)
+        pbar.update(1)
 
 
 def download(url, params, output_filename):
@@ -194,20 +205,18 @@ def download(url, params, output_filename):
     for i in range(retry):
         try:
             r = requests.get(url, params=params)
+            p = None
             if output_filename:
                 p = Path(output_filename)
                 if not p.parent.exists():
                     p.parent.mkdir()
                 p.write_bytes(r.content)
-                # with open(output_filename, mode) as fd:
-                #     fd.write(r.content)
-                # p=Path(output_filename)
-                # if p.suffix == '.json':
-                #     p2=
-                #     subprocess.run(['jq', '.', '<', ])
-            # actually dict
-            return r.json()
-
+            d = r.json()
+            max_usage = check_max_usage(d)
+            if max_usage:
+                if p:
+                    p.unlink()
+                raise DARTMaxUsageError(max_usage)
         except (SSLZeroReturnError, SSLError) as e:
             time.sleep(5)
             continue

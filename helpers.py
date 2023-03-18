@@ -1,6 +1,8 @@
 import logging
 import sys
 
+from elasticsearch.helpers import scan
+
 from config import QUARTER_CODES
 from post_data import esclient
 
@@ -52,3 +54,8 @@ def query_corp_code_doc(client, corp_code):
     logging.disable(logging.NOTSET)
 
     return resp
+
+
+def query_corp_code_list(client):
+    its = scan(client, query={"query": {"match_all": {}}}, index="corp_code", scroll="360m")
+    return [doc['_source']['corp_code'] for doc in its]
