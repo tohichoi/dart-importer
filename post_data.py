@@ -209,9 +209,9 @@ def create_index(client, indices):
             settings={"number_of_shards": 1},
             mappings={
                 "properties": {
-                    "corp_code": {"type": "text"},
-                    "corp_name": {"type": "text"},
-                    "stock_code": {"type": "text"},
+                    "corp_code": {"type": "keyword"},
+                    "corp_name": {"type": "keyword"},
+                    "stock_code": {"type": "keyword"},
                     "modify_date": {
                         "type": "date",
                         "format": "yyyyMMdd"}
@@ -230,26 +230,26 @@ def create_index(client, indices):
             settings={"number_of_shards": 1},
             mappings={
                 "properties": {
-                    "corp_code": {"type": "text"}, #"00126380",
-                    "corp_name": {"type": "text"}, #"삼성전자(주)",
+                    "corp_code": {"type": "keyword"}, #"00126380",
+                    "corp_name": {"type": "keyword"}, #"삼성전자(주)",
                     "corp_name_eng": {"type": "text"}, # "SAMSUNG ELECTRONICS CO,.LTD",
-                    "stock_name": {"type": "text"},  #"삼성전자",
-                    "stock_code": {"type": "text"},  #"005930",
+                    "stock_name": {"type": "keyword"},  #"삼성전자",
+                    "stock_code": {"type": "keyword"},  #"005930",
                     "ceo_nm": {"type": "text"},  #"한종희, 경계현",
                     # corp_cls: 법인구분 : Y(유가), K(코스닥), N(코넥스), E(기타)
-                    "corp_cls": {"type": "text"},  #"Y",
-                    "jurir_no": {"type": "text"},  #"1301110006246",
-                    "bizr_no": {"type": "text"},  #"1248100998",
+                    "corp_cls": {"type": "keyword"},  #"Y",
+                    "jurir_no": {"type": "keyword"},  #"1301110006246",
+                    "bizr_no": {"type": "keyword"},  #"1248100998",
                     "adres": {"type": "text"},  #"경기도 수원시 영통구  삼성로 129 (매탄동)",
                     "hm_url": {"type": "text"},  #"www.samsung.com/sec",
                     "ir_url": {"type": "text"},  #"",
-                    "phn_no": {"type": "text"},  #"02-2255-0114",
-                    "fax_no": {"type": "text"},  #"031-200-7538",
-                    "induty_code": {"type": "text"},  #"264",
+                    "phn_no": {"type": "keyword"},  #"02-2255-0114",
+                    "fax_no": {"type": "keyword"},  #"031-200-7538",
+                    "induty_code": {"type": "keyword"},  #"264",
                     "est_dt": {
                         "type": "date",
                         "format": "yyyyMMdd"},  #"19690113",
-                    "acc_mt": {"type": "text"},  #"12",
+                    "acc_mt": {"type": "keyword"},  #"12",
                 }
             },
             # ignore
@@ -284,7 +284,7 @@ def create_index(client, indices):
                     # 접수번호
                     "rcept_no": {"type": "text"},
                     # 보고서 코드
-                    "reprt_code": {"type": "text"},
+                    "reprt_code": {"type": "keyword"},
                     # 사업 연도
                     "bsns_year": {"type": "date", "format": "yyyy"},
                     # 고유번호
@@ -343,9 +343,9 @@ def create_index(client, indices):
         settings={"number_of_shards": 1},
         mappings={
             "properties": {
-                "corp_code": {"type": "text"},
+                "corp_code": {"type": "keyword"},
                 "year": {"type": "date", "format": "yyyy"},
-                "reprt_code": {"type": "text"},
+                "reprt_code": {"type": "keyword"},
                 "created_time": {
                     "type": "date",
                     # https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping-date-format.html
