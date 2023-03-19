@@ -17,6 +17,7 @@ from elasticsearch.helpers import streaming_bulk
 
 from config import DART_RESULT_DIR, ELASTIC_USER, ELASTIC_PASSWORD, ELASTIC_CERTFILE_FINGERPRINT, \
     ELASTICSEARCH_URL, QUARTER_CODES
+from helpers import query_corp_info_doc
 
 logfmt = "%(asctime)s %(levelname)s %(message)s"
 coloredlogs.install(fmt=logfmt)
@@ -103,13 +104,20 @@ def generate_corp_code_doc(code_code_list):
         yield doc
 
 
-def generate_corp_info_doc(filename):
+def generate_corp_info_doc(client, filename):
     logger.info(f'Parsing {filename}')
     zf = zipfile.ZipFile(filename)
     for f in zf.namelist():
         ci = json.loads(zf.read(f))
+        resp = query_corp_info_doc(client, ci['corp_code'])
+        if resp['hits']['total']['value'] > 0:
+            continue
         for k in ['status', 'message']:
             del(ci[k])
+        try:
+            pendulum.from_format(ci['est_dt'], 'YYYYMMDD')
+        except ValueError:
+            ci['est_dt'] = pendulum.now().to_date_string().replace('-', '')
         yield ci
     zf.close()
 
@@ -237,7 +245,7 @@ def create_index(client, indices):
                     "stock_code": {"type": "keyword"},  #"005930",
                     "ceo_nm": {"type": "text"},  #"한종희, 경계현",
                     # corp_cls: 법인구분 : Y(유가), K(코스닥), N(코넥스), E(기타)
-                    "corp_cls": {"type": "keyword"},  #"Y",
+                    "corp_cls": {"type": "keyword"},  #"Y", 법인구분 : Y(유가), K(코스닥), N(코넥스), E(기타)
                     "jurir_no": {"type": "keyword"},  #"1301110006246",
                     "bizr_no": {"type": "keyword"},  #"1248100998",
                     "adres": {"type": "text"},  #"경기도 수원시 영통구  삼성로 129 (매탄동)",
@@ -507,24 +515,24 @@ def post_corp_code(client):
 def post_corp_info(client):
     corp_info_output_filename = f'{DART_RESULT_DIR}/corp_info.zip'
 
-    logger.info('Checking index status ... ')
-    n = query_index_imported('corp_info')
-    if n == 0:
-        logger.info('Parsing corp info')
-        # corp_info_list = parse_corp_code(corp_info_output_filename)
-        # number_of_docs = len(corp_info_list)
-        # progress = tqdm(unit="docs", total=number_of_docs)
-        successes = 0
-        # logging.disable(sys.maxsize)
-        for ok, action in streaming_bulk(
-                client=client, index="corp_info", actions=generate_corp_info_doc(corp_info_output_filename),
-        ):
-            # progress.update(1)
-            successes += ok
-        # logging.disable(logging.NOTSET)
-        # print("Indexed %d/%d documents" % (successes, number_of_docs))
+    # logger.info('Checking index status ... ')
+    # n = query_index_imported('corp_info')
+    # if n == 0:
+    logger.info('Parsing corp info')
+    # corp_info_list = parse_corp_code(corp_info_output_filename)
+    # number_of_docs = len(corp_info_list)
+    # progress = tqdm(unit="docs", total=number_of_docs)
+    successes = 0
+    # logging.disable(sys.maxsize)
+    for ok, action in streaming_bulk(
+            client=client, index="corp_info", actions=generate_corp_info_doc(client, corp_info_output_filename),
+    ):
+        # progress.update(1)
+        successes += ok
+    # logging.disable(logging.NOTSET)
+    # print("Indexed %d/%d documents" % (successes, number_of_docs))
 
-    return n
+    return successes
 
 
 def post_all_corp_data(client):

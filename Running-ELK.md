@@ -228,6 +228,19 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/search-search.ht
 
 #### Querying DSL
 
+```kql
+GET corp_code/_search
+{
+  "query": {
+    "match": {
+      "corp_code": {
+        "query": "00526696"
+      }
+    }
+  }
+}
+```
+
 ```
 GET /_search
 {
