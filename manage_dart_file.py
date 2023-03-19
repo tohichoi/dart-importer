@@ -7,6 +7,9 @@ import zipfile
 from collections import defaultdict
 from pathlib import Path
 import logging
+import argparse
+
+logging.getLogger().setLevel(logging.DEBUG)
 
 
 class DartFileManager:
@@ -170,8 +173,50 @@ class DartFileManagerEx(DartFileManager):
             logging.info(f'VALID : {self.config["corp_code"]}:{self.config["corp_name"]}')
 
 
+def clean_corp_info(data_dir, dry_run):
+    r = Path(data_dir + 'corp_info')
+    print(f'Data dir : {r}')
+    invalid_files = []
+    if not r.is_dir():
+        print(f'Invalid dir : {r}')
+        return
+
+    files = list(r.glob('*.json'))
+    if len(files) < 1:
+        print('File not found')
+        return
+
+    for f in files:
+        with open(f) as fd:
+            data = json.load(fd)
+            if data['status'] not in ['000', '013']:
+                invalid_files.append(f)
+                print(f'INVALID: {f} : {data["status"]}')
+            else:
+                print(f'VALID: {f} : {data["status"]}')
+
+    if not dry_run:
+        for f in invalid_files:
+            f.unlink()
+
+
 if __name__ == "__main__":
-    data_dir = sys.argv[1]
-    dry_run = int(sys.argv[2])
-    dfc = DartFileCleanerEx(data_dir=data_dir)
-    dfc.clean_all_data(dry_run=dry_run)
+    parser = argparse.ArgumentParser(description='dart file manager')
+    indices = ['corp_data', 'corp_info']
+    parser.add_argument('--clean', help='Clean corp_data', choices=indices, nargs="+", default=[], required=True)
+
+    parser.add_argument('--data-dir', type=str, required=True, help='Specifiy data dir', default='data/dart')
+
+    parser.add_argument('--dry-run', action='store_true', default=True)
+    args = parser.parse_args()
+    logging.info(args)
+    data_dir = args.data_dir
+    dry_run = args.dry_run
+
+    if 'corp_data' in args.clean:
+        dfc = DartFileManagerEx(data_dir=data_dir)
+        dfc.clean_all_data(dry_run=dry_run)
+
+    if 'corp_info' in args.clean:
+        clean_corp_info(data_dir, dry_run)
+

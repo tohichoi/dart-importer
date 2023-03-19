@@ -217,6 +217,6 @@ def download(url, params, output_filename):
                 if p:
                     p.unlink()
                 raise DARTMaxUsageError(max_usage)
-        except (SSLZeroReturnError, SSLError) as e:
+        except (SSLZeroReturnError, SSLError):
             time.sleep(5)
             continue
