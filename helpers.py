@@ -1,8 +1,8 @@
 import logging
 import sys
-
+import json
 from elasticsearch.helpers import scan
-
+from pathlib import Path
 from config import QUARTER_CODES
 
 
@@ -81,3 +81,18 @@ def query_corp_code_doc(client, corp_code):
 def query_corp_code_list(client):
     its = scan(client, query={"query": {"match_all": {}}}, index="corp_code", scroll="360m")
     return [doc['_source']['corp_code'] for doc in its]
+
+
+def is_valid_dart_result_file(file):
+    d = dict()
+    if type(file) == str:
+        p = Path(file)
+        d = json.loads(p.read_text())
+    elif isinstance(file, Path):
+        d = json.loads(file.read_text())
+    elif type(file) == dict:
+        d = file
+    else:
+        raise ValueError(f'Invalid data: {str(file)}')
+
+    return ('status' in d) and (d['status'].strip() in ['000', '013'])
