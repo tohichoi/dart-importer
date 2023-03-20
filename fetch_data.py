@@ -1,5 +1,6 @@
 import collections
 import csv
+import json
 import logging
 import os
 import subprocess
@@ -8,6 +9,7 @@ import time
 from pathlib import Path
 from ssl import SSLZeroReturnError
 
+import pendulum
 import requests
 from elasticsearch.helpers import streaming_bulk, scan
 from requests.exceptions import SSLError
@@ -38,10 +40,26 @@ def fetch_kospi200():
     with open(f) as fd:
         reader = csv.reader(fd)
         nlines = 0
+        data = []
+        # 종목코드,종목명,현재가,대비,등락률,거래대금(원),상장시가총액(원)
         for row in reader:
-            if nlines == 0:
+            nlines += 1
+            if nlines == 1:
                 continue
-            print(row)
+            # print(row)
+            record = {
+                'corp_name': row[1],
+                'stock_code': row[0],
+                'market_capitalization': int(row[-1].replace(',', '')),
+                'date': pendulum.now().to_date_string().replace('-', '')
+            }
+            data.append(record)
+
+    fout = f.with_suffix('.json').absolute()
+    with open(fout, 'w') as fd:
+        json.dump(data, fd, indent=4)
+
+    return data
 
 
 def fetch_corp_code():

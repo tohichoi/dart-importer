@@ -4,7 +4,8 @@ import argparse
 
 from fetch_data import fetch_corp_code, fetch_all_corp_data, fetch_corp_info, fetch_kospi200
 from helpers import query_corp_code_list
-from post_data import create_index, esclient, delete_documents, post_corp_code, post_all_corp_data, post_corp_info
+from post_data import create_index, esclient, delete_documents, post_corp_code, post_all_corp_data, post_corp_info, \
+    post_kospi200
 
 
 def main():
@@ -18,10 +19,10 @@ def main():
         '--delete-documents', help='Delete all documents',
         choices=indices, nargs="+", default=[])
     parser.add_argument(
-        '--fetch-data', help='Fetch data',
+        '--fetch', help='Fetch data',
         choices=indices, nargs="+", default=[])
     parser.add_argument(
-        '--post-data', help='Post data',
+        '--post', help='Post data',
         choices=indices, nargs="+", default=[])
     # parser.add_argument(
     #     '--import-corp-data', help='Import corp data(filings, ...)', action='store_true')
@@ -39,33 +40,32 @@ def main():
             print('Cancelled.')
 
     # corp_code
-    if 'corp_code' in args.fetch_data:
+    if 'corp_code' in args.fetch:
         fetch_corp_code()
 
-    if 'corp_code' in args.post_data:
+    if 'corp_code' in args.post:
         post_corp_code(esclient)
 
     # corp_code
-    if 'corp_info' in args.fetch_data:
+    if 'corp_info' in args.fetch:
         fetch_corp_info(query_corp_code_list(esclient))
 
-    if 'corp_info' in args.post_data:
+    if 'corp_info' in args.post:
         post_corp_info(esclient)
 
     # corp_data
-    if 'corp_data' in args.fetch_data:
+    if 'corp_data' in args.fetch:
         fetch_all_corp_data(esclient)
 
-    if 'corp_data' in args.post_data:
+    if 'corp_data' in args.post:
         post_all_corp_data(esclient)
 
     # corp_data
-    if 'kospi200' in args.fetch_data:
+    if 'kospi200' in args.fetch:
         fetch_kospi200()
 
-    if 'kospi200' in args.post_data:
-        # post_kospi200(esclient)
-        pass
+    if 'kospi200' in args.post:
+        post_kospi200(esclient)
 
     # # 삼성전자
     # data = get_corp_info_from_dart('00126380', list(range(2021, 2023)))

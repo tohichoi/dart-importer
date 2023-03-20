@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+import codecs
 import json
 import zipfile
 from pathlib import Path
@@ -16,7 +16,7 @@ from elasticsearch import Elasticsearch, NotFoundError
 from elasticsearch.helpers import streaming_bulk
 
 from config import DART_RESULT_DIR, ELASTIC_USER, ELASTIC_PASSWORD, ELASTIC_CERTFILE_FINGERPRINT, \
-    ELASTICSEARCH_URL, QUARTER_CODES
+    ELASTICSEARCH_URL, QUARTER_CODES, KRX_KOSPI200_DATA_FILE
 from helpers import query_corp_info_doc
 
 logfmt = "%(asctime)s %(levelname)s %(message)s"
@@ -113,7 +113,7 @@ def generate_corp_info_doc(client, filename):
         if resp['hits']['total']['value'] > 0:
             continue
         for k in ['status', 'message']:
-            del(ci[k])
+            del (ci[k])
         try:
             pendulum.from_format(ci['est_dt'], 'YYYYMMDD')
         except ValueError:
@@ -238,26 +238,26 @@ def create_index(client, indices):
             settings={"number_of_shards": 1},
             mappings={
                 "properties": {
-                    "corp_code": {"type": "keyword"}, #"00126380",
-                    "corp_name": {"type": "keyword"}, #"삼성전자(주)",
-                    "corp_name_eng": {"type": "text"}, # "SAMSUNG ELECTRONICS CO,.LTD",
-                    "stock_name": {"type": "keyword"},  #"삼성전자",
-                    "stock_code": {"type": "keyword"},  #"005930",
-                    "ceo_nm": {"type": "text"},  #"한종희, 경계현",
+                    "corp_code": {"type": "keyword"},  # "00126380",
+                    "corp_name": {"type": "keyword"},  # "삼성전자(주)",
+                    "corp_name_eng": {"type": "text"},  # "SAMSUNG ELECTRONICS CO,.LTD",
+                    "stock_name": {"type": "keyword"},  # "삼성전자",
+                    "stock_code": {"type": "keyword"},  # "005930",
+                    "ceo_nm": {"type": "text"},  # "한종희, 경계현",
                     # corp_cls: 법인구분 : Y(유가), K(코스닥), N(코넥스), E(기타)
-                    "corp_cls": {"type": "keyword"},  #"Y", 법인구분 : Y(유가), K(코스닥), N(코넥스), E(기타)
-                    "jurir_no": {"type": "keyword"},  #"1301110006246",
-                    "bizr_no": {"type": "keyword"},  #"1248100998",
-                    "adres": {"type": "text"},  #"경기도 수원시 영통구  삼성로 129 (매탄동)",
-                    "hm_url": {"type": "text"},  #"www.samsung.com/sec",
-                    "ir_url": {"type": "text"},  #"",
-                    "phn_no": {"type": "keyword"},  #"02-2255-0114",
-                    "fax_no": {"type": "keyword"},  #"031-200-7538",
-                    "induty_code": {"type": "keyword"},  #"264",
+                    "corp_cls": {"type": "keyword"},  # "Y", 법인구분 : Y(유가), K(코스닥), N(코넥스), E(기타)
+                    "jurir_no": {"type": "keyword"},  # "1301110006246",
+                    "bizr_no": {"type": "keyword"},  # "1248100998",
+                    "adres": {"type": "text"},  # "경기도 수원시 영통구  삼성로 129 (매탄동)",
+                    "hm_url": {"type": "text"},  # "www.samsung.com/sec",
+                    "ir_url": {"type": "text"},  # "",
+                    "phn_no": {"type": "keyword"},  # "02-2255-0114",
+                    "fax_no": {"type": "keyword"},  # "031-200-7538",
+                    "induty_code": {"type": "keyword"},  # "264",
                     "est_dt": {
                         "type": "date",
-                        "format": "yyyyMMdd"},  #"19690113",
-                    "acc_mt": {"type": "keyword"},  #"12",
+                        "format": "yyyyMMdd"},  # "19690113",
+                    "acc_mt": {"type": "keyword"},  # "12",
                 }
             },
             # ignore
@@ -265,7 +265,6 @@ def create_index(client, indices):
             # Troubleshooting the “400 Resource-Already-Exists” error message
             # If you try to create an index name(indices.create) that has already been created, the RequestError(400, 'resource_already_exists_exception)' will appear.
         )
-
 
     if 'corp_data' in indices:
         # https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS003&apiId=2019020
@@ -368,6 +367,19 @@ def create_index(client, indices):
         # >It’s good to know: Use an ignore parameter with the one or more status codes you want to overlook when you want to avoid raising an exception.
         # Troubleshooting the “400 Resource-Already-Exists” error message
         # If you try to create an index name(indices.create) that has already been created, the RequestError(400, 'resource_already_exists_exception)' will appear.
+    )
+
+    client.options(ignore_status=400).indices.create(
+        index="kospi200",
+        settings={"number_of_shards": 1},
+        mappings={
+            "properties": {
+                "corp_name": {"type": "keyword"},
+                "stock_code": {"type": "keyword"},
+                "market_capitalization":{"type": "long"},
+                "date": {"type": "date", "format": "yyyyMMdd"},
+            }
+        },
     )
 
 
@@ -537,3 +549,32 @@ def post_corp_info(client):
 
 def post_all_corp_data(client):
     pass
+
+
+def generate_kospi200_doc(client, data):
+    for d in data:
+        yield d
+
+
+def post_kospi200(client):
+    f = Path(KRX_KOSPI200_DATA_FILE).with_suffix('.json')
+    if not f.exists():
+        raise FileNotFoundError(f.absolute())
+
+    with open(f, 'rt', encoding='utf-8-sig') as fd:
+        data = json.load(fd)
+
+    successes = 0
+    for doc in data:
+        resp = client.index(index="kospi200", document=doc)
+        # http status 200 or 201
+        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/201
+        if resp['result'] == 'created':
+            successes += 1
+
+    # for ok, action in streaming_bulk(
+    #         client=client, index="kospi200", actions=generate_kospi200_doc(client, data),
+    # ):
+    #     successes += ok
+
+    return successes
