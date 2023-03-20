@@ -1,15 +1,28 @@
 import logging
-import sys
+import unittest
 import zipfile
 from pathlib import Path
 from unittest import TestCase
 
-from elasticsearch.helpers import scan
-
-from config import DART_CORPCODE_DATA_FILE
-from fetch_data import fetch_one_corp_data, fetch_corp_data, fetch_corp_code
-from manage_dart_file import DartFileManager
+import config
 from post_data import esclient, post_year_corp_data, post_quarter_corp_data, post_corp_code
+from config import ELASTIC_PASSWORD, ELASTIC_CERTFILE_FINGERPRINT, ELASTICSEARCH_URL, DART_CORPCODE_DATA_FILE
+from fetch_data import fetch_one_corp_data, fetch_corp_data, fetch_corp_code
+from elasticsearch import Elasticsearch
+from elasticsearch.helpers import streaming_bulk, scan
+import sys
+
+from manage_dart_file import DartFileManager, DartFileCleanerEx
+
+
+class TestDartFileCleaner(TestCase):
+    def test(self):
+        # data_dir = sys.argv[1]
+        # dry_run = int(sys.argv[2])
+        data_dir = 'data/dart'
+        dry_run = 1
+        dfc = DartFileCleanerEx(data_dir=data_dir)
+        dfc.clean_all_data(dry_run=dry_run)
 
 
 class TestFetchCorpCode(TestCase):
@@ -141,3 +154,7 @@ class TestDFM(TestCase):
         zf = Path(self.dfm_save._zipfile)
         self.assertTrue(zf.exists())
         self.assertTrue(zf.lstat().st_size > 1024)
+
+
+if __name__ == '__main__':
+    unittest.main()

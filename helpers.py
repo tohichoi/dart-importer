@@ -1,8 +1,9 @@
 import logging
 import sys
-
+import json
+from elasticsearch.helpers import scan
+from pathlib import Path
 from config import QUARTER_CODES
-from post_data import esclient
 
 
 def query_corp_code_count(client) -> int:
@@ -37,6 +38,29 @@ def query_corp_data(client, corp_code, year: int) -> list:
     return hits
 
 
+def query_corp_info_doc(client, corp_code):
+    # r = elastic_session.get(ELASTICSEARCH_URL + '/corp_code/_search',
+    #                          data={
+    #                              "query": {
+    #                                 "term": {
+    #                                      "corp_code": corp_code
+    #                                  }
+    #                                 }
+    #                              },
+    #                          headers={'Content-Type': 'application/json'})
+    logging.disable(sys.maxsize)
+    resp = client.search(index="corp_info", query={
+        "match": {
+            "corp_code": {
+                "query": corp_code
+            }
+        }
+    })
+    logging.disable(logging.NOTSET)
+
+    return resp
+
+
 def query_corp_code_doc(client, corp_code):
     # r = elastic_session.get(ELASTICSEARCH_URL + '/corp_code/_search',
     #                          data={
@@ -51,4 +75,24 @@ def query_corp_code_doc(client, corp_code):
     resp = client.get(index="corp_code", id=corp_code)
     logging.disable(logging.NOTSET)
 
-    return resp['_source']
+    return resp
+
+
+def query_corp_code_list(client):
+    its = scan(client, query={"query": {"match_all": {}}}, index="corp_code", scroll="360m")
+    return [doc['_source']['corp_code'] for doc in its]
+
+
+def is_valid_dart_result_file(file):
+    d = dict()
+    if type(file) == str:
+        p = Path(file)
+        d = json.loads(p.read_text())
+    elif isinstance(file, Path):
+        d = json.loads(file.read_text())
+    elif type(file) == dict:
+        d = file
+    else:
+        raise ValueError(f'Invalid data: {str(file)}')
+
+    return ('status' in d) and (d['status'].strip() in ['000', '013'])

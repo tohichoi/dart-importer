@@ -2,6 +2,7 @@
 
 import json
 import zipfile
+from pathlib import Path
 from pprint import pprint
 import sys
 import pendulum
@@ -16,6 +17,7 @@ from elasticsearch.helpers import streaming_bulk
 
 from config import DART_RESULT_DIR, ELASTIC_USER, ELASTIC_PASSWORD, ELASTIC_CERTFILE_FINGERPRINT, \
     ELASTICSEARCH_URL, QUARTER_CODES
+from helpers import query_corp_info_doc
 
 logfmt = "%(asctime)s %(levelname)s %(message)s"
 coloredlogs.install(fmt=logfmt)
@@ -43,6 +45,20 @@ esclient = Elasticsearch(
 )
 
 
+def parse_corp_info(filename):
+    """
+
+    Args:
+        filename: zipfile path
+
+    Returns:
+
+    """
+    logger.info(f'Parsing {filename}')
+    zf = zipfile.ZipFile(filename)
+    return [Path(f).with_suffix('') for f in zf.namelist()]
+
+
 def parse_corp_code(filename):
     """
 
@@ -55,10 +71,11 @@ def parse_corp_code(filename):
     logger.info(f'Parsing {filename}')
     zf = zipfile.ZipFile(filename)
     soup = BeautifulSoup(zf.read('CORPCODE.xml'), features="xml")
-    return [t for t in soup.result.find_all('list') if len(t.stock_code.text.strip()) > 0]
+    # return [t for t in soup.result.find_all('list') if len(t.stock_code.text.strip()) > 0]
+    return [t for t in soup.result.find_all('list')]
 
 
-def generate_corp_code_doc(code_info_list):
+def generate_corp_code_doc(code_code_list):
     """corp code generator
     
         refer to fetch_corp_code()
@@ -69,7 +86,7 @@ def generate_corp_code_doc(code_info_list):
     Yields:
         dict: _description_
     """
-    for ci in code_info_list:
+    for ci in code_code_list:
         # code_info[ci.corp_name.text]
         doc = {
             '_id': ci.corp_code.text.strip(),
@@ -85,6 +102,24 @@ def generate_corp_code_doc(code_info_list):
         #     continue
 
         yield doc
+
+
+def generate_corp_info_doc(client, filename):
+    logger.info(f'Parsing {filename}')
+    zf = zipfile.ZipFile(filename)
+    for f in zf.namelist():
+        ci = json.loads(zf.read(f))
+        resp = query_corp_info_doc(client, ci['corp_code'])
+        if resp['hits']['total']['value'] > 0:
+            continue
+        for k in ['status', 'message']:
+            del(ci[k])
+        try:
+            pendulum.from_format(ci['est_dt'], 'YYYYMMDD')
+        except ValueError:
+            ci['est_dt'] = pendulum.now().to_date_string().replace('-', '')
+        yield ci
+    zf.close()
 
 
 def parse_corp_code_OLD(filename, do_post):
@@ -116,7 +151,7 @@ def parse_corp_code_OLD(filename, do_post):
                                  headers={'Content-Type': 'application/json'})
         if r.status_code == requests.codes.ok:
             logger.info('Posting OK')
-            nimported = query_corp_code_imported()
+            nimported = query_index_imported()
             logger.info(f'Posted data : {nimported}')
         else:
             logger.error(f'{r.status_code}')
@@ -135,7 +170,7 @@ def analyze_corp_info(data):
                 pprint(d)
 
 
-def query_corp_code_imported():
+def query_index_imported(index_name):
     #
     # low-level api client
     #
@@ -150,7 +185,7 @@ def query_corp_code_imported():
     # else:
     #     logger.error(f'{r.status_code}')
     #     r.raise_for_status()
-    resp = esclient.search(index="corp_code", query={"match_all": {}})
+    resp = esclient.search(index=index_name, query={"match_all": {}})
     return resp['hits']['total']['value']
 
 
@@ -182,9 +217,9 @@ def create_index(client, indices):
             settings={"number_of_shards": 1},
             mappings={
                 "properties": {
-                    "corp_code": {"type": "search_as_you_type"},
-                    "corp_name": {"type": "search_as_you_type"},
-                    "stock_code": {"type": "text"},
+                    "corp_code": {"type": "keyword"},
+                    "corp_name": {"type": "keyword"},
+                    "stock_code": {"type": "keyword"},
                     "modify_date": {
                         "type": "date",
                         "format": "yyyyMMdd"}
@@ -195,6 +230,42 @@ def create_index(client, indices):
             # Troubleshooting the “400 Resource-Already-Exists” error message
             # If you try to create an index name(indices.create) that has already been created, the RequestError(400, 'resource_already_exists_exception)' will appear.
         )
+
+    # https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019002
+    if 'corp_info' in indices:
+        client.options(ignore_status=400).indices.create(
+            index="corp_info",
+            settings={"number_of_shards": 1},
+            mappings={
+                "properties": {
+                    "corp_code": {"type": "keyword"}, #"00126380",
+                    "corp_name": {"type": "keyword"}, #"삼성전자(주)",
+                    "corp_name_eng": {"type": "text"}, # "SAMSUNG ELECTRONICS CO,.LTD",
+                    "stock_name": {"type": "keyword"},  #"삼성전자",
+                    "stock_code": {"type": "keyword"},  #"005930",
+                    "ceo_nm": {"type": "text"},  #"한종희, 경계현",
+                    # corp_cls: 법인구분 : Y(유가), K(코스닥), N(코넥스), E(기타)
+                    "corp_cls": {"type": "keyword"},  #"Y", 법인구분 : Y(유가), K(코스닥), N(코넥스), E(기타)
+                    "jurir_no": {"type": "keyword"},  #"1301110006246",
+                    "bizr_no": {"type": "keyword"},  #"1248100998",
+                    "adres": {"type": "text"},  #"경기도 수원시 영통구  삼성로 129 (매탄동)",
+                    "hm_url": {"type": "text"},  #"www.samsung.com/sec",
+                    "ir_url": {"type": "text"},  #"",
+                    "phn_no": {"type": "keyword"},  #"02-2255-0114",
+                    "fax_no": {"type": "keyword"},  #"031-200-7538",
+                    "induty_code": {"type": "keyword"},  #"264",
+                    "est_dt": {
+                        "type": "date",
+                        "format": "yyyyMMdd"},  #"19690113",
+                    "acc_mt": {"type": "keyword"},  #"12",
+                }
+            },
+            # ignore
+            # >It’s good to know: Use an ignore parameter with the one or more status codes you want to overlook when you want to avoid raising an exception.
+            # Troubleshooting the “400 Resource-Already-Exists” error message
+            # If you try to create an index name(indices.create) that has already been created, the RequestError(400, 'resource_already_exists_exception)' will appear.
+        )
+
 
     if 'corp_data' in indices:
         # https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS003&apiId=2019020
@@ -221,21 +292,21 @@ def create_index(client, indices):
                     # 접수번호
                     "rcept_no": {"type": "text"},
                     # 보고서 코드
-                    "reprt_code": {"type": "text"},
+                    "reprt_code": {"type": "keyword"},
                     # 사업 연도
                     "bsns_year": {"type": "date", "format": "yyyy"},
                     # 고유번호
-                    "corp_code": {"type": "search_as_you_type"},
+                    "corp_code": {"type": "text"},
                     # 재무제표구분
                     # BS : 재무상태표 IS : 손익계산서 CIS : 포괄손익계산서 CF : 현금흐름표 SCE : 자본변동표
-                    "sj_div": {"type": "search_as_you_type"},
+                    "sj_div": {"type": "text"},
                     # 재무제표명
-                    "sj_nm": {"type": "search_as_you_type"},
+                    "sj_nm": {"type": "text"},
                     # 계정ID
                     # XBRL 표준계정ID ※ 표준계정ID가 아닐경우 ""-표준계정코드 미사용-"" 표시
                     "account_id": {"type": "text"},
                     # 계정명
-                    "account_nm": {"type": "search_as_you_type"},
+                    "account_nm": {"type": "text"},
                     # 계정상세
                     # ※ 자본변동표에만 출력 ex) 계정 상세명칭 예시 - 자본 [member]|지배기업 소유주지분 - 자본 [member]|지배기업 소유주지분|기타포괄손익누계액 [member]
                     "account_detail": {"type": "text"},
@@ -280,9 +351,9 @@ def create_index(client, indices):
         settings={"number_of_shards": 1},
         mappings={
             "properties": {
-                "corp_code": {"type": "search_as_you_type"},
+                "corp_code": {"type": "keyword"},
                 "year": {"type": "date", "format": "yyyy"},
-                "reprt_code": {"type": "text"},
+                "reprt_code": {"type": "keyword"},
                 "created_time": {
                     "type": "date",
                     # https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping-date-format.html
@@ -302,10 +373,8 @@ def create_index(client, indices):
 
 def delete_documents(client, indices):
     try:
-        if 'corp_code' in indices:
-            client.delete_by_query(index='corp_code', query={"match_all": {}})
-        if 'corp_data' in indices:
-            client.delete_by_query(index='corp_data', query={"match_all": {}})
+        for ind in indices:
+            client.delete_by_query(index=ind, query={"match_all": {}})
     except NotFoundError:
         pass
 
@@ -348,7 +417,7 @@ def post_quarter_corp_data_history(client, corp_code, qdata: dict, successes):
     docs = qdata['list']
 
     '''
-                    "corp_code": {"type": "search_as_you_type"},
+                    "corp_code": {"type": "text"},
                     "year": {"type": "date", "format": "yyyy"},
                     "reprt_code": {"type": "text"},
                     "created_time": {
@@ -424,7 +493,7 @@ def post_corp_code(client):
     corp_code_output_filename = f'{DART_RESULT_DIR}/corp-code.zip'
 
     logger.info('Checking index status ... ')
-    n = query_corp_code_imported()
+    n = query_index_imported('corp_code')
     if n == 0:
         logger.info('Parsing corp code')
         corp_code_list = parse_corp_code(corp_code_output_filename)
@@ -443,5 +512,28 @@ def post_corp_code(client):
     return n
 
 
-def post_corp_data(client):
+def post_corp_info(client):
+    corp_info_output_filename = f'{DART_RESULT_DIR}/corp_info.zip'
+
+    # logger.info('Checking index status ... ')
+    # n = query_index_imported('corp_info')
+    # if n == 0:
+    logger.info('Parsing corp info')
+    # corp_info_list = parse_corp_code(corp_info_output_filename)
+    # number_of_docs = len(corp_info_list)
+    # progress = tqdm(unit="docs", total=number_of_docs)
+    successes = 0
+    # logging.disable(sys.maxsize)
+    for ok, action in streaming_bulk(
+            client=client, index="corp_info", actions=generate_corp_info_doc(client, corp_info_output_filename),
+    ):
+        # progress.update(1)
+        successes += ok
+    # logging.disable(logging.NOTSET)
+    # print("Indexed %d/%d documents" % (successes, number_of_docs))
+
+    return successes
+
+
+def post_all_corp_data(client):
     pass
