@@ -1,4 +1,5 @@
 import collections
+import csv
 import logging
 import os
 import subprocess
@@ -13,7 +14,8 @@ from requests.exceptions import SSLError
 from tqdm import tqdm
 
 from post_data import logger
-from config import DART_RESULT_DIR, dart_base_params, dart_params, QUARTER_CODES, DART_CORPCODE_DATA_FILE
+from config import DART_RESULT_DIR, dart_base_params, dart_params, QUARTER_CODES, DART_CORPCODE_DATA_FILE, \
+    KRX_KOSPI200_DATA_FILE
 from helpers import query_corp_data, query_corp_code_doc, query_corp_code_count
 from manage_dart_file import DartFileManagerEx
 
@@ -26,6 +28,20 @@ def check_max_usage(r: dict):
     if r['status'] == '020':
         return r['message']
     return None
+
+
+def fetch_kospi200():
+    f = Path(KRX_KOSPI200_DATA_FILE)
+    if not f.exists():
+        raise FileNotFoundError(f.absolute())
+
+    with open(f) as fd:
+        reader = csv.reader(fd)
+        nlines = 0
+        for row in reader:
+            if nlines == 0:
+                continue
+            print(row)
 
 
 def fetch_corp_code():

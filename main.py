@@ -2,13 +2,13 @@
 
 import argparse
 
-from fetch_data import fetch_corp_code, fetch_all_corp_data, fetch_corp_info
+from fetch_data import fetch_corp_code, fetch_all_corp_data, fetch_corp_info, fetch_kospi200
 from helpers import query_corp_code_list
 from post_data import create_index, esclient, delete_documents, post_corp_code, post_all_corp_data, post_corp_info
 
 
 def main():
-    indices = ['corp_code', 'corp_data', 'corp_info']
+    indices = ['corp_code', 'corp_data', 'corp_info', 'kospi200']
     parser = argparse.ArgumentParser(description='dart importer')
     parser.add_argument(
         '--create-index',
@@ -58,6 +58,14 @@ def main():
 
     if 'corp_data' in args.post_data:
         post_all_corp_data(esclient)
+
+    # corp_data
+    if 'kospi200' in args.fetch_data:
+        fetch_kospi200()
+
+    if 'kospi200' in args.post_data:
+        # post_kospi200(esclient)
+        pass
 
     # # 삼성전자
     # data = get_corp_info_from_dart('00126380', list(range(2021, 2023)))
