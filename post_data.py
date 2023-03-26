@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import codecs
 import json
+import re
 import zipfile
 from pathlib import Path
 from pprint import pprint
@@ -17,7 +18,7 @@ from elasticsearch.helpers import streaming_bulk
 
 from config import DART_RESULT_DIR, ELASTIC_USER, ELASTIC_PASSWORD, ELASTIC_CERTFILE_FINGERPRINT, \
     ELASTICSEARCH_URL, QUARTER_CODES, KRX_KOSPI200_DATA_FILE
-from helpers import query_corp_info_doc
+from helpers import query_corp_info_doc, query_corp_data, query_corp_name, query_corp_quarter_doc
 from manage_dart_file import DartFileManagerEx
 
 logfmt = "%(asctime)s %(levelname)s %(message)s"
@@ -290,28 +291,28 @@ def create_index(client, indices):
             mappings={
                 "properties": {
                     # 접수번호
-                    "rcept_no": {"type": "text"},
+                    "rcept_no": {"type": "keyword"},
                     # 보고서 코드
                     "reprt_code": {"type": "keyword"},
                     # 사업 연도
                     "bsns_year": {"type": "date", "format": "yyyy"},
                     # 고유번호
-                    "corp_code": {"type": "text"},
+                    "corp_code": {"type": "keyword"},
                     # 재무제표구분
                     # BS : 재무상태표 IS : 손익계산서 CIS : 포괄손익계산서 CF : 현금흐름표 SCE : 자본변동표
-                    "sj_div": {"type": "text"},
+                    "sj_div": {"type": "keyword"},
                     # 재무제표명
-                    "sj_nm": {"type": "text"},
+                    "sj_nm": {"type": "keyword"},
                     # 계정ID
                     # XBRL 표준계정ID ※ 표준계정ID가 아닐경우 ""-표준계정코드 미사용-"" 표시
-                    "account_id": {"type": "text"},
+                    "account_id": {"type": "keyword"},
                     # 계정명
-                    "account_nm": {"type": "text"},
+                    "account_nm": {"type": "keyword"},
                     # 계정상세
                     # ※ 자본변동표에만 출력 ex) 계정 상세명칭 예시 - 자본 [member]|지배기업 소유주지분 - 자본 [member]|지배기업 소유주지분|기타포괄손익누계액 [member]
                     "account_detail": {"type": "text"},
                     # 당기명
-                    "thstrm_nm": {"type": "text"},
+                    "thstrm_nm": {"type": "keyword"},
                     # 당기금액
                     # 9,999,999,999 ※ 분/반기 보고서이면서 (포괄)손익계산서 일 경우 [3개월] 금액
                     "thstrm_amount": {"type": "long"},
@@ -466,27 +467,29 @@ def _get_time_frame(doc) -> dict:
 
 def post_quarter_corp_data(client, corp_code, qdata: dict) -> int:
     if type(qdata) != dict:
-        logger.error(f'Data type is not dict : {str(type(qdata))}')
-        return -1
+        raise TypeError(f'Data type is not dict : {str(type(qdata))}')
+        # logger.error(f'Data type is not dict : {str(type(qdata))}')
 
     if qdata['status'] != '000':
-        logger.error(f'Status code is {qdata["status"]}({qdata["message"]})')
-        return -1
+        raise ValueError(f'Fetched data status code is {qdata["status"]} ({qdata["message"]})')
 
     docs = qdata['list']
     number_of_docs = len(docs)
-    progress = tqdm(unit="docs", total=number_of_docs)
+    progress = tqdm(unit="docs", total=number_of_docs, desc='Quarter', leave=False)
     successes = 0
     logging.disable(sys.maxsize)
     for doc in docs:
         # create 는 id 필요. index 는 불필요
         doc = _get_time_frame(doc)
-        resp = client.index(index="corp_data", document=doc)
-        # http status 200 or 201
-        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/201
-        if resp['result'] == 'created':
-            successes += 1
-        progress.update(1)
+        if not query_corp_quarter_doc(client, doc):
+            resp = client.index(index="corp_data", document=doc)
+            # http status 200 or 201
+            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/201
+            if resp['result'] == 'created':
+                successes += 1
+            progress.update(1)
+        else:
+            logger.info('data exists')
     logging.disable(logging.NOTSET)
 
     # logger.info("Indexed %d/%d documents" % (successes, number_of_docs))
@@ -495,10 +498,15 @@ def post_quarter_corp_data(client, corp_code, qdata: dict) -> int:
     return successes
 
 
-def post_year_corp_data(client, corp_code, ydata: list):
+def post_year_corp_data(client, corp_code, year, ydata: list):
     ns = []
-    for qdata in ydata:
-        ns.append(post_quarter_corp_data(client, corp_code, qdata))
+    corp_name = query_corp_name(client, corp_code)
+    for idx, qdata in enumerate(ydata):
+        try:
+            ns.append(post_quarter_corp_data(client, corp_code, qdata))
+        except (ValueError, TypeError) as e:
+            logger.error(f'{corp_name}/{year}/{idx}th : {e}')
+            continue
     return ns
 
 
@@ -549,8 +557,27 @@ def post_corp_info(client):
 
 
 def post_all_corp_data(client):
-    dfm = DartFileManagerEx(data_dir=DART_RESULT_DIR, corp_code=corp_code, corp_name=corp_name,
-                            data_file_prefix='financial-statements', logger=logger)
+    data_dir = Path(DART_RESULT_DIR).joinpath('corp_data')
+    corps = [ p for p in list(data_dir.rglob('*')) if p.is_dir() ]
+    progress_corp = tqdm(unit="corps", total=len(corps), desc='Corporations', colour='blue')
+    for p in corps:
+        m = re.match(r'([0-9]+)-(.+)$', p.name)
+        if m:
+            corp_code = m.group(1)
+            corp_name = m.group(2)
+            progress_corp.set_description(corp_name)
+            dfm = DartFileManagerEx(data_dir=DART_RESULT_DIR, corp_code=corp_code, corp_name=corp_name,
+                                    data_file_prefix='financial-statements', logger=logger)
+            if dfm.is_valid():
+                progress_years = tqdm(unit='years', total=len(dfm.corp_data), leave=False, colour='yellow')
+                for year, ydata in dfm.corp_data.items():
+                    progress_years.set_description(f'Year {year}')
+                    hits = query_corp_data(client, corp_code, year)
+                    # quarter * 4
+                    if sum(hits) != 4:
+                        post_year_corp_data(client, corp_code, year, ydata)
+                    progress_years.update(1)
+        progress_corp.update(1)
 
 
 def generate_kospi200_doc(client, data):

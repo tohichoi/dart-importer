@@ -14,6 +14,40 @@ def query_corp_code_count(client) -> int:
     return resp['count']
 
 
+def query_corp_quarter_doc(client, doc):
+    query_fields = []
+    fields = ["corp_code", "bsns_year", "reprt_code", 'rcept_no', 'account_id', 'thstrm_nm']
+    for f in fields:
+        query_fields.append({"term": {f: doc[f]}})
+    resp = client.search(index="corp_data", query={
+        "bool": {
+            "must": query_fields
+        }
+    })
+    return resp['hits']['total']['value'] > 0
+
+
+def query_corp_quarter_data(client, corp_code, year: int, quarter: int) -> bool:
+    # resp = es.search(index="test-index", query={"match_all": {}})
+    # print("Got %d Hits:" % resp['hits']['total']['value'])
+    # for hit in resp['hits']['hits']:
+    #     print("%(timestamp)s %(author)s: %(text)s" % hit["_source"])
+    logging.disable(sys.maxsize)
+    qcs = dict(zip(range(1, 5), QUARTER_CODES))
+    resp = client.search(index="corp_data", query={
+        "bool": {
+            "must": [
+                {"term": {"corp_code": corp_code}},
+                {"term": {"bsns_year": str(year)}},
+                {"term": {"reprt_code": qcs[quarter]}}
+            ]
+        }
+    })
+    logging.disable(logging.NOTSET)
+
+    return resp['hits']['total']['value'] > 0
+
+
 def query_corp_data(client, corp_code, year: int) -> list:
     # 연단위로만 체크하자
     # resp = es.search(index="test-index", query={"match_all": {}})
@@ -32,10 +66,15 @@ def query_corp_data(client, corp_code, year: int) -> list:
                 ]
             }
         })
-        hits.append(resp['hits']['total']['value'])
+        hits.append(resp['hits']['total']['value'] > 0)
     logging.disable(logging.NOTSET)
 
     return hits
+
+
+def query_corp_name(client, corp_code):
+    resp = query_corp_code_doc(client, corp_code)
+    return resp['_source']['corp_name']
 
 
 def query_corp_info_doc(client, corp_code):

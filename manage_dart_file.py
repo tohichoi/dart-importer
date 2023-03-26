@@ -101,7 +101,7 @@ class DartFileManager:
             if m:
                 year = int(m.group(1))
                 with zf.open(f) as fd:
-                    corp_data[year].append(fd.read().decode())
+                    corp_data[year].append(json.loads(fd.read().decode()))
         zf.close()
         return corp_data
 
@@ -127,6 +127,7 @@ class DartFileManager:
 class DartFileManagerEx(DartFileManager):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.corp_data = None
 
     def _extract_config(self, zp):
         # dart/corp_data/<corp_code>-<corp_name>/financial_statements-([0-9]+)-[^\.]+.zip
@@ -139,22 +140,30 @@ class DartFileManagerEx(DartFileManager):
         return False
 
     def is_valid(self):
-        corp_data = self.load()
-        if corp_data:
-            return self._is_valid_corp_data(self.load())
-        return False
+        return self._is_valid_corp_data(self.load())
+
+    def load(self):
+        if self.corp_data:
+            return self.corp_data
+
+        self.corp_data = super().load()
+
+        return self.corp_data
 
     def _is_valid_corp_data(self, corp_data):
+        if not corp_data:
+            return False
+
         status = []
         n = 0
         for year, ydata in corp_data.items():
             n += len(ydata)
             for qdata in ydata:
-                qjdata = json.loads(qdata)
+                # qjdata = json.loads(qdata)
                 # https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS003&apiId=2019020
                 # 000 :정상
                 # 013 :조회된 데이타가 없습니다.
-                status.append(1 if qjdata['status'] in ['000', '013'] else 0)
+                status.append(1 if qdata['status'] in ['000', '013'] else 0)
 
         return sum(status) == n
 
