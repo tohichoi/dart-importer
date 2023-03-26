@@ -18,6 +18,7 @@ from elasticsearch.helpers import streaming_bulk
 from config import DART_RESULT_DIR, ELASTIC_USER, ELASTIC_PASSWORD, ELASTIC_CERTFILE_FINGERPRINT, \
     ELASTICSEARCH_URL, QUARTER_CODES, KRX_KOSPI200_DATA_FILE
 from helpers import query_corp_info_doc
+from manage_dart_file import DartFileManagerEx
 
 logfmt = "%(asctime)s %(levelname)s %(message)s"
 coloredlogs.install(fmt=logfmt)
@@ -548,7 +549,8 @@ def post_corp_info(client):
 
 
 def post_all_corp_data(client):
-    pass
+    dfm = DartFileManagerEx(data_dir=DART_RESULT_DIR, corp_code=corp_code, corp_name=corp_name,
+                            data_file_prefix='financial-statements', logger=logger)
 
 
 def generate_kospi200_doc(client, data):

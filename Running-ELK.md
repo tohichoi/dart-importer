@@ -241,6 +241,20 @@ GET corp_code/_search
 }
 ```
 
+##### 값이 있는 doc
+
+```
+GET /_all/_search
+{
+  "query": {
+    "regexp": {
+      "stock_code" : ".+"
+      }
+    } // match_all
+  }
+}
+```
+
 ```
 GET /_search
 {
@@ -258,6 +272,8 @@ GET /_search
   }
 }
 ```
+
+##### 특정회사의 보고서
 
 1분기보고서 : 11013
 반기보고서 : 11012
@@ -278,17 +294,6 @@ GET /_search
         { "term":  { "status": "published" }},
         { "range": { "publish_date": { "gte": "2015-01-01" }}}
       ]
-    }
-  }
-}
-```
-
-```
-GET /_search
-{
-  "query": {
-    "exists": {
-      "field": "user"
     }
   }
 }
@@ -319,3 +324,18 @@ https://elasticsearch-py.readthedocs.io/en/v8.6.2/
 https://www.elastic.co/guide/en/elasticsearch/client/python-api/current/index.html
 
 https://kb.objectrocket.com/elasticsearch/how-to-create-and-delete-elasticsearch-indexes-using-the-python-client-library
+
+
+# Joining
+
+https://blog.knoldus.com/how-to-join-two-indices-in-kibana/
+
+```
+POST _aliases
+{
+  "actions": [
+    {"add": {"index": "kospi200", "alias": "kospi200_corp_code"}},
+    {"add": {"index": "corp_code", "alias": "kospi200_corp_code"}}
+  ]
+}
+```

@@ -12,7 +12,7 @@ from elasticsearch import Elasticsearch
 from elasticsearch.helpers import streaming_bulk, scan
 import sys
 
-from manage_dart_file import DartFileManager, DartFileCleanerEx
+from manage_dart_file import DartFileManager, DartFileManagerEx
 
 
 class TestDartFileCleaner(TestCase):

@@ -73,12 +73,13 @@ def fetch_corp_code():
     logger.info('Fetching corp code from DART system')
     output_filename = DART_CORPCODE_DATA_FILE
 
-    url = "https://opendart.fss.or.kr/api/corpCode.xml"
     if os.path.exists(output_filename):
-        logger.info(f'We have {output_filename}. Fetching corp_code is skipped.')
+        # logger.info(f'We have {output_filename}. Fetching corp_code is skipped.')
+        return
     else:
         logger.info('Querying corp_code ... ')
         params = dart_base_params | {}
+        url = "https://opendart.fss.or.kr/api/corpCode.xml"
         download(url, params, output_filename)
 
     # p = Path(output_filename)
