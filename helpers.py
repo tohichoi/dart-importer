@@ -3,7 +3,7 @@ import sys
 import json
 from elasticsearch.helpers import scan
 from pathlib import Path
-from config import QUARTER_CODES
+from config import QUARTER_CODES, REB_REGION_CODES
 
 
 def query_corp_code_count(client) -> int:
@@ -135,3 +135,17 @@ def is_valid_dart_result_file(file):
         raise ValueError(f'Invalid data: {str(file)}')
 
     return ('status' in d) and (d['status'].strip() in ['000', '013'])
+
+
+def reb_load_region_codes(filepath):
+    if len(REB_REGION_CODES) > 0:
+        return REB_REGION_CODES
+
+    with open(filepath) as fd:
+        for line in fd.readlines():
+            tokens = line.split()
+            if len(tokens) != 2:
+                continue
+            REB_REGION_CODES[tokens[0]] = tokens[1]
+
+    return REB_REGION_CODES

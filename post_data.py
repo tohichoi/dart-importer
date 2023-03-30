@@ -385,6 +385,22 @@ def create_index(client, indices):
     )
 
 
+    client.options(ignore_status=400).indices.create(
+        index="reb_getRealEstateTradingCount",
+        settings={"number_of_shards": 1},
+        mappings={
+            "properties": {
+                "ALL_CNT": {"type": "integer"},
+                "DEAL_OBJ": {"type": "integer"},
+                "LEVEL_NO": {"type": "integer"},
+                "REGION_CD": {"type": "keyword"},
+                "REGION_NM": {"type": "keyword"},
+                "RESEARCH_DATE": {"type": "date", "format": "yyyyMM"},
+            }
+        },
+    )
+
+
 def delete_documents(client, indices):
     try:
         for ind in indices:

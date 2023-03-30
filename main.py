@@ -9,7 +9,7 @@ from post_data import create_index, esclient, delete_documents, post_corp_code, 
 
 
 def main():
-    indices = ['corp_code', 'corp_data', 'corp_info', 'kospi200']
+    indices = ['corp_code', 'corp_data', 'corp_info', 'kospi200', 'reb1']
     parser = argparse.ArgumentParser(description='dart importer')
     parser.add_argument(
         '--create-index',
@@ -66,6 +66,7 @@ def main():
 
     if 'kospi200' in args.post:
         post_kospi200(esclient)
+
 
     # # 삼성전자
     # data = get_corp_info_from_dart('00126380', list(range(2021, 2023)))

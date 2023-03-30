@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 from post_data import logger
 from config import DART_RESULT_DIR, dart_base_params, dart_params, QUARTER_CODES, DART_CORPCODE_DATA_FILE, \
-    KRX_KOSPI200_DATA_FILE
+    KRX_KOSPI200_DATA_FILE, REB_REGION_CODES, config
 from helpers import query_corp_data, query_corp_code_doc, query_corp_code_count
 from manage_dart_file import DartFileManagerEx
 
@@ -26,10 +26,67 @@ class DARTMaxUsageError(Exception):
     pass
 
 
-def check_max_usage(r: dict):
-    if r['status'] == '020':
-        return r['message']
+def check_max_usage(r: dict, service_name: str):
+    if service_name == 'dart':
+        if r['status'] == '020':
+            return r['message']
     return None
+
+
+def download_reb_page(url, params, output_filename, headers):
+    # download first page
+    data = download(url, params, output_filename, headers)
+    if data:
+        max_count = data['matchCount']
+        current_count = data['currentCount']
+
+    return data
+
+
+def fetch_reb_getRealEstateTradingCount():
+    npages = 100
+
+    url = 'https://api.odcloud.kr/api/RealEstateTradingSvc/v1/getRealEstateTradingCount'
+    headers = {
+        "Authorization": config['REB_API_KEY'],
+        "accept": "application/json"
+    }
+
+    params = {
+        'serviceKey': config['REB_API_KEY'],
+        'page': 1,
+        'perPage': npages,
+        'returnType': 'json',
+        'cond[RESEARCH_DATE::LTE]': '202302',
+    }
+
+    # progress1 = tqdm(total=len(REB_REGION_CODES))
+    for region_code, region_name in REB_REGION_CODES.items():
+        # progress1.set_description(region_name)
+        logger.info(f'Fetching {region_name}')
+        params['cond[REGION_CD::EQ]'] = region_code
+        output_filename = Path(config['REB_RESULT_DIR']) / Path(f'getRealEstateTradingCount/data-{region_name}.json')
+
+        # download first page
+        bare_data = []
+        params['page'] = 1
+        data = download(url, params, None, headers)
+        if data:
+            max_count = data['matchCount']
+            current_count = data['currentCount']
+            bare_data += data['data']
+            # progress2 = tqdm(total=max_count, desc=region_name)
+            while current_count < max_count:
+                params.update({'page': params['page'] + 1})
+                data = download(url, params, None, headers)
+                bare_data += data['data']
+                current_count += data['currentCount']
+                # progress2.update(current_count)
+            with open(output_filename, 'w') as fd:
+                json.dump(bare_data, fd, indent=4)
+            # progress2.close()
+
+        # progress1.update(1)
 
 
 def fetch_kospi200():
@@ -235,23 +292,32 @@ def fetch_corp_info(corp_codes):
         pbar.update(1)
 
 
-def download(url, params, output_filename):
+def download(url, params, output_filename, headers=None):
     retry = 5
+    data = None
     for i in range(retry):
         try:
-            r = requests.get(url, params=params)
+            r = requests.get(url, params=params, headers=headers)
             p = None
             if output_filename:
                 p = Path(output_filename)
                 if not p.parent.exists():
                     p.parent.mkdir()
                 p.write_bytes(r.content)
-            d = r.json()
-            max_usage = check_max_usage(d)
+            data = r.json()
+            max_usage = None
+            if 'dart' in url:
+                max_usage = check_max_usage(data, 'dart')
+            elif 'reb' in url:
+                max_usage = check_max_usage(data, 'reb')
+
             if max_usage:
                 if p:
                     p.unlink()
                 raise DARTMaxUsageError(max_usage)
+            break
         except (SSLZeroReturnError, SSLError):
             time.sleep(5)
             continue
+
+    return data
