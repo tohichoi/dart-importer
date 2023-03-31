@@ -4,8 +4,9 @@ import argparse
 from pathlib import Path
 
 from config import config
-from fetch_data import fetch_reb_getRealEstateTradingCount
-from helpers import reb_load_region_codes
+from fetch_data import reb_fetch_getRealEstateTradingCount
+from helpers import reb_load_region_codes, esclient
+from post_data import reb_create_index
 
 
 def main():
@@ -34,9 +35,11 @@ def main():
 
     reb_load_region_codes(Path(config['REB_RESULT_DIR']) / Path(config['REG_REGION_CODES_FILE']))
 
-    # corp_data
+    if len(args.create_index) > 0:
+        reb_create_index(esclient, args.create_index)
+
     if 'getRealEstateTradingCount' in args.fetch:
-        fetch_reb_getRealEstateTradingCount()
+        reb_fetch_getRealEstateTradingCount()
 
     # if 'reb1' in args.post:
     #     post_kospi200(esclient)

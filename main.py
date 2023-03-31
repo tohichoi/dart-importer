@@ -2,10 +2,10 @@
 
 import argparse
 
-from fetch_data import fetch_corp_code, fetch_all_corp_data, fetch_corp_info, fetch_kospi200
-from helpers import query_corp_code_list
-from post_data import create_index, esclient, delete_documents, post_corp_code, post_all_corp_data, post_corp_info, \
-    post_kospi200
+from fetch_data import dart_fetch_corp_code, dart_fetch_all_corp_data, dart_fetch_corp_info, dart_fetch_kospi200
+from helpers import query_corp_code_list, delete_documents
+from post_data import dart_create_index, esclient, dart_post_corp_code, dart_post_all_corp_data, dart_post_corp_info, \
+    dart_post_kospi200
 
 
 def main():
@@ -30,7 +30,7 @@ def main():
     args = parser.parse_args()
 
     if len(args.create_index) > 0:
-        create_index(esclient, args.create_index)
+        dart_create_index(esclient, args.create_index)
 
     if len(args.delete_documents):
         ans = input("WARNING: Delete all data? Type 'delete' to proceed.\nYour choice: ")
@@ -41,31 +41,31 @@ def main():
 
     # corp_code
     if 'corp_code' in args.fetch:
-        fetch_corp_code()
+        dart_fetch_corp_code()
 
     if 'corp_code' in args.post:
-        post_corp_code(esclient)
+        dart_post_corp_code(esclient)
 
     # corp_code
     if 'corp_info' in args.fetch:
-        fetch_corp_info(query_corp_code_list(esclient))
+        dart_fetch_corp_info(query_corp_code_list(esclient))
 
     if 'corp_info' in args.post:
-        post_corp_info(esclient)
+        dart_post_corp_info(esclient)
 
     # corp_data
     if 'corp_data' in args.fetch:
-        fetch_all_corp_data(esclient)
+        dart_fetch_all_corp_data(esclient)
 
     if 'corp_data' in args.post:
-        post_all_corp_data(esclient)
+        dart_post_all_corp_data(esclient)
 
     # corp_data
     if 'kospi200' in args.fetch:
-        fetch_kospi200()
+        dart_fetch_kospi200()
 
     if 'kospi200' in args.post:
-        post_kospi200(esclient)
+        dart_post_kospi200(esclient)
 
 
     # # 삼성전자
