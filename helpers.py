@@ -12,7 +12,7 @@ from config import QUARTER_CODES, REB_REGION_CODES, ELASTIC_USER, ELASTIC_PASSWO
 import logging
 import coloredlogs
 
-logfmt = "%(asctime)s %(levelname)s %(message)s"
+logfmt = "%(asctime)s %(levelname)10s %(message)s"
 coloredlogs.install(fmt=logfmt)
 
 logging.basicConfig(

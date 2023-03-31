@@ -5,7 +5,8 @@ from pathlib import Path
 from unittest import TestCase
 
 import config
-from post_data import esclient, dart_post_year_corp_data, dart_post_quarter_corp_data, dart_post_corp_code
+from helpers import esclient
+from post_data import dart_post_year_corp_data, dart_post_quarter_corp_data, dart_post_corp_code
 from config import ELASTIC_PASSWORD, ELASTIC_CERTFILE_FINGERPRINT, ELASTICSEARCH_URL, DART_CORPCODE_DATA_FILE
 from fetch_data import dart_fetch_one_corp_data, dart_fetch_corp_data, dart_fetch_corp_code
 from elasticsearch import Elasticsearch

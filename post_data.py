@@ -13,10 +13,48 @@ from bs4 import BeautifulSoup
 from elasticsearch.helpers import streaming_bulk
 from tqdm import tqdm
 
-from config import DART_RESULT_DIR, ELASTICSEARCH_URL, KRX_KOSPI200_DATA_FILE
+from config import DART_RESULT_DIR, ELASTICSEARCH_URL, KRX_KOSPI200_DATA_FILE, config, REB_REGION_CODES
 from helpers import query_corp_info_doc, query_corp_data, query_corp_name, query_corp_quarter_doc, query_index_imported, \
     get_time_frame, logger, elastic_session
 from manage_dart_file import DartFileManagerEx
+
+# 토지거래 01
+# 순수토지거래 02
+# 건축물거래 03
+# 주택거래 04
+# 아파트거래 05
+# 주택매매거래 06
+# 아파트매매거래 07
+# 토지매매거래 08
+
+
+reb_deal_obj_map = {
+    "01": "토지거래",
+    "02": "순수토지거래",
+    "03": "건축물거래",
+    "04": "주택거래",
+    "05": "아파트거래",
+    "06": "주택매매거래",
+    "07": "아파트매매거래",
+    "08": "토지매매거래",
+}
+
+reb_index_mappings = {
+    'getRealEstateTradingCount': {
+        "index": "reb_getrealestatetradingcount",
+        "settings": {"number_of_shards": 1},
+        "mappings": {
+            "properties": {
+                "ALL_CNT": {"type": "integer"},
+                "DEAL_OBJ": {"type": "keyword"},
+                "LEVEL_NO": {"type": "integer"},
+                "REGION_CD": {"type": "keyword"},
+                "REGION_NM": {"type": "keyword"},
+                "RESEARCH_DATE": {"type": "date", "format": "yyyyMM"},
+            }
+        }
+    }
+}
 
 
 def dart_parse_corp_info(filename):
@@ -156,21 +194,12 @@ def dart_analyze_corp_info(data):
 
 
 def reb_create_index(client, indices):
-    if 'getRealEstateTradingCount' in indices:
-        client.options(ignore_status=400).indices.create(
-            index="reb_getRealEstateTradingCount",
-            settings={"number_of_shards": 1},
-            mappings={
-                "properties": {
-                    "ALL_CNT": {"type": "integer"},
-                    "DEAL_OBJ": {"type": "integer"},
-                    "LEVEL_NO": {"type": "integer"},
-                    "REGION_CD": {"type": "keyword"},
-                    "REGION_NM": {"type": "keyword"},
-                    "RESEARCH_DATE": {"type": "date", "format": "yyyyMM"},
-                }
-            },
-        )
+    for ind in indices:
+        if ind in reb_index_mappings:
+            r = client.options(ignore_status=400).indices.create(
+                **reb_index_mappings[ind]
+            )
+            print(r)
 
 
 # https://github.com/elastic/elasticsearch-py/blob/main/examples/bulk-ingest
@@ -540,16 +569,58 @@ def dart_post_kospi200(client):
         data = json.load(fd)
 
     successes = 0
+
     for doc in data:
         resp = client.index(index="kospi200", document=doc)
         # http status 200 or 201
         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/201
         if resp['result'] == 'created':
             successes += 1
-
     # for ok, action in streaming_bulk(
     #         client=client, index="kospi200", actions=generate_kospi200_doc(client, data),
     # ):
     #     successes += ok
 
     return successes
+
+
+#         number_of_docs = len(corp_code_list)
+#         progress = tqdm(unit="docs", total=number_of_docs)
+#         successes = 0
+#         logging.disable(sys.maxsize)
+#         for ok, action in streaming_bulk(
+#                 client=client, index="corp_code", actions=dart_generate_corp_code_doc(corp_code_list),
+#         ):
+#             progress.update(1)
+#             successes += ok
+#         logging.disable(logging.NOTSET)
+def _reb_generate_getRealEstateTradingCount_doc(docs):
+    for doc in docs:
+        yield doc
+
+
+def reb_post_getRealEstateTradingCount(client, in_dir):
+    # p = Path(config['REB_RESULT_DIR']) / Path(f'getRealEstateTradingCount/')
+    p = in_dir
+    successes = 0
+    for f in p.glob('data-*.json'):
+        # logger.info(f'Processing {f.name}')
+        docs = json.loads(f.read_bytes())
+        progress = tqdm(unit="docs", total=len(docs), desc=f.name)
+        successes = 0
+        logging.disable(sys.maxsize)
+        for ok, action in streaming_bulk(
+                client=client, index=reb_index_mappings['getRealEstateTradingCount']['index'],
+                actions=_reb_generate_getRealEstateTradingCount_doc(docs)
+        ):
+            progress.update(1)
+            successes += ok
+        logging.disable(logging.NOTSET)
+
+        # for doc in docs:
+        #     resp = client.index(index=reb_index_mappings['getRealEstateTradingCount']['index'], document=doc)
+        #     # http status 200 or 201
+        #     # https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/201
+        #     if resp['result'] == 'created':
+        #         successes += 1
+    print(f'Posted {successes} documents()')
