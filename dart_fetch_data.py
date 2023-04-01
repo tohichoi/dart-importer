@@ -1,25 +1,22 @@
 import collections
 import csv
 import json
-import logging
 import os
-import subprocess
-import sys
 import time
 from pathlib import Path
 from ssl import SSLZeroReturnError
 
 import pendulum
 import requests
-from elasticsearch.helpers import streaming_bulk, scan
+from elasticsearch.helpers import scan
 from requests.exceptions import SSLError
 from tqdm import tqdm
 
-from post_data import logger, reb_deal_obj_map
+from dart_post_data import logger
 from config import DART_RESULT_DIR, dart_base_params, dart_params, QUARTER_CODES, DART_CORPCODE_DATA_FILE, \
-    KRX_KOSPI200_DATA_FILE, REB_REGION_CODES, config
-from helpers import query_corp_data, query_corp_code_doc, query_corp_code_count
-from manage_dart_file import DartFileManagerEx
+    KRX_KOSPI200_DATA_FILE
+from helpers import query_corp_data, query_corp_code_doc
+from dart_manage_file import DartFileManagerEx
 
 
 class DARTMaxUsageError(Exception):
@@ -31,90 +28,6 @@ def dart_check_max_usage(r: dict, service_name: str):
         if r['status'] == '020':
             return r['message']
     return None
-
-
-def reb_download_page(url, params, output_filename, headers):
-    # download first page
-    data = download(url, params, output_filename, headers)
-    if data:
-        max_count = data['matchCount']
-        current_count = data['currentCount']
-
-    return data
-
-
-def reb_preprocess_getRealEstateTradingCount():
-    p = Path(config['REB_RESULT_DIR']) / Path(f'getRealEstateTradingCount/')
-    poutdir = p / Path(f'preprocessed')
-    poutdir.mkdir(exist_ok=True)
-    successes = 0
-    for f in p.glob('data-*.json'):
-        logger.info(f'Preprocessing {f.name}')
-        docs = json.loads(f.read_bytes())
-        for doc in docs:
-            deal_obj = doc['DEAL_OBJ']
-            doc['DEAL_OBJ'] = reb_deal_obj_map[doc['DEAL_OBJ']]
-        poutfile = poutdir.joinpath(f.name)
-        poutfile.write_text(json.dumps(docs))
-
-
-def reb_map_deal_obj(docs):
-    new_docs = []
-    for doc in docs:
-        deal_obj = doc['DEAL_OBJ']
-        doc['DEAL_OBJ'] = reb_deal_obj_map[deal_obj]
-        new_docs.append(doc)
-    return new_docs
-
-
-def reb_fetch_getRealEstateTradingCount(outdir, gte: str, lte: str):
-    npages = 100
-
-    url = 'https://api.odcloud.kr/api/RealEstateTradingSvc/v1/getRealEstateTradingCount'
-    headers = {
-        "Authorization": config['REB_API_KEY'],
-        "accept": "application/json"
-    }
-
-    params = {
-        'serviceKey': config['REB_API_KEY'],
-        'page': 1,
-        'perPage': npages,
-        'returnType': 'json',
-        'cond[RESEARCH_DATE::GTE]': gte,
-        'cond[RESEARCH_DATE::LTE]': lte,
-    }
-
-    # progress1 = tqdm(total=len(REB_REGION_CODES))
-    for region_code, region_name in REB_REGION_CODES.items():
-        # progress1.set_description(region_name)
-        logger.info(f'Fetching {region_name}')
-        params['cond[REGION_CD::EQ]'] = region_code
-        output_filename = outdir / Path(f'data-{region_name}.json')
-
-        # download first page
-        bare_data = []
-        params['page'] = 1
-        data = download(url, params, None, headers)
-        if data:
-            max_count = data['matchCount']
-            if max_count == 0:
-                logger.error(f'{region_name} has no data ')
-                continue
-            current_count = data['currentCount']
-            bare_data += reb_map_deal_obj(data['data'])
-            # progress2 = tqdm(total=max_count, desc=region_name)
-            while current_count < max_count:
-                params.update({'page': params['page'] + 1})
-                data = download(url, params, None, headers)
-                bare_data += reb_map_deal_obj(data['data'])
-                current_count += data['currentCount']
-                # progress2.update(current_count)
-            with open(output_filename, 'w') as fd:
-                json.dump(bare_data, fd, indent=4)
-            # progress2.close()
-
-        # progress1.update(1)
 
 
 def dart_fetch_kospi200():

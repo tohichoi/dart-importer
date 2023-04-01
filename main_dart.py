@@ -2,9 +2,9 @@
 
 import argparse
 
-from fetch_data import dart_fetch_corp_code, dart_fetch_all_corp_data, dart_fetch_corp_info, dart_fetch_kospi200
+from dart_fetch_data import dart_fetch_corp_code, dart_fetch_all_corp_data, dart_fetch_corp_info, dart_fetch_kospi200
 from helpers import query_corp_code_list, delete_documents
-from post_data import dart_create_index, esclient, dart_post_corp_code, dart_post_all_corp_data, dart_post_corp_info, \
+from dart_post_data import dart_create_index, esclient, dart_post_corp_code, dart_post_all_corp_data, dart_post_corp_info, \
     dart_post_kospi200
 
 
@@ -13,7 +13,7 @@ def main():
     parser = argparse.ArgumentParser(description='dart importer')
     parser.add_argument(
         '--create-index',
-        help='Create ElasticSearch Index. Example: ./post_data.py --create-index corp_code corp_data',
+        help='Create ElasticSearch Index. Example: ./dart_post_data.py --create-index corp_code corp_data',
         choices=indices, nargs="+", default=[])
     parser.add_argument(
         '--delete-documents', help='Delete all documents',
