@@ -8,17 +8,20 @@ import pendulum
 
 from config import config
 from reb_fetch_data import reb_preprocess_getRealEstateTradingCount, reb_fetch_getRealEstateTradingCount, \
-    reb_fetch_getRealEstateTradingCountBuildType, reb_fetch_getAptRealTradingPriceIndex
-from helpers import reb_load_region_codes, esclient, logger
+    reb_fetch_getRealEstateTradingCountBuildType, reb_fetch_getAptRealTradingPriceIndex, \
+    reb_fetch_getAptRealTradingPriceIndexSize
+from helpers import reb_load_region_codes, esclient, logger, delete_documents
 from reb_post_data import reb_post_getRealEstateTradingCount, reb_create_index, \
-    reb_post_getRealEstateTradingCountBuildType, reb_post_getAptRealTradingPriceIndex
+    reb_post_getRealEstateTradingCountBuildType, reb_post_getAptRealTradingPriceIndex, \
+    reb_post_getAptRealTradingPriceIndexSize, reb_index_mappings
 
 
 def main():
     indices = {
         'getRealEstateTradingCount': '조사일자, 지역코드, 거래유형 값을 이용하여 부동산 거래 건수 정보를 제공',
         'getRealEstateTradingCountBuildType': '건물유형별 부동산 거래 건수 조회',
-        'getAptRealTradingPriceIndex': '공동주택 실거래가격지수 통계 조회 서비스'
+        'getAptRealTradingPriceIndex': '공동주택 실거래가격지수 통계 조회 서비스',
+        'getAptRealTradingPriceIndexSize': '공동주택 실거래가격지수 통계 조회 서비스',
     }
 
     now = pendulum.now(tz="Asia/Seoul")
@@ -42,6 +45,14 @@ def main():
     #     '--import-corp-data', help='Import corp data(filings, ...)', action='store_true')
 
     args = parser.parse_args()
+
+    if len(args.delete_documents):
+        ans = input("WARNING: Delete all data? Type 'delete' to proceed.\nYour choice: ")
+        if ans.strip().lower() == 'delete':
+            indices = [reb_index_mappings[ind]['index'] for ind in args.delete_documents]
+            delete_documents(esclient, indices)
+        else:
+            print('Cancelled.')
 
     if args.gte or args.lte:
         try:
@@ -90,6 +101,16 @@ def main():
             logger.error('--in-dir error')
             sys.exit(1)
         reb_post_getAptRealTradingPriceIndex(esclient, in_dir)
+
+    if 'getAptRealTradingPriceIndexSize' in args.fetch:
+        reb_fetch_getAptRealTradingPriceIndexSize(args.out_dir, args.gte, args.lte)
+
+    if 'getAptRealTradingPriceIndexSize' in args.post:
+        in_dir = Path(args.in_dir)
+        if not in_dir.exists():
+            logger.error('--in-dir error')
+            sys.exit(1)
+        reb_post_getAptRealTradingPriceIndexSize(esclient, in_dir)
 
     if 'getRealEstateTradingCount' in args.preprocess:
         reb_preprocess_getRealEstateTradingCount()

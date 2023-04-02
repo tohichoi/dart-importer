@@ -4,7 +4,7 @@ from pathlib import Path
 from config import config, REB_REGION_CODES
 from dart_fetch_data import download
 from helpers import logger
-from reb_post_data import reb_deal_obj_map, reb_apt_type_map, reb_contract_type_map
+from reb_post_data import reb_deal_obj_map, reb_apt_type_map, reb_contract_type_map, reb_size_gbn_map
 
 
 def reb_download_page(url, params, output_filename, headers):
@@ -42,7 +42,7 @@ def reb_postprocess_doc(docs):
         if 'CONTRACT_TYPE' in doc:
             doc['CONTRACT_TYPE'] = reb_contract_type_map[doc['CONTRACT_TYPE']]
         if 'SIZE_GBN' in doc:
-            doc['SIZE_GBN'] = reb_contract_type_map[doc['SIZE_GBN']]
+            doc['SIZE_GBN'] = reb_size_gbn_map[doc['SIZE_GBN']]
         new_docs.append(doc)
     return new_docs
 
@@ -130,7 +130,17 @@ def reb_fetch_getAptRealTradingPriceIndex(outdir, gte: str, lte: str):
     index = 'getAptRealTradingPriceIndex'
     url = f'https://api.odcloud.kr/api/{api_name}/v1/{index}'
 
-    extra_params = {
-        'cond[SIZE_GBN::EQ]': "0"  # all
-    }
-    reb_get_data(url, outdir, gte, lte, extra_params)
+    reb_get_data(url, outdir, gte, lte, None)
+
+
+def reb_fetch_getAptRealTradingPriceIndexSize(outdir, gte: str, lte: str):
+    api_name = 'RealTradingPriceIndexSvc'
+    index = 'getAptRealTradingPriceIndexSize'
+    url = f'https://api.odcloud.kr/api/{api_name}/v1/{index}'
+
+    for sz_key, sz_val in reb_size_gbn_map.items():
+        extra_params = {
+            'cond[SIZE_GBN::EQ]': sz_key  # all
+        }
+        new_outdir = str(Path(outdir) / Path(sz_val))
+        reb_get_data(url, new_outdir, gte, lte, extra_params)

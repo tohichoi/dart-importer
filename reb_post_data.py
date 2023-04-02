@@ -1,6 +1,7 @@
 import json
 import logging
 import sys
+import copy
 
 from elasticsearch.helpers import streaming_bulk
 from tqdm import tqdm
@@ -36,7 +37,6 @@ reb_contract_type_map = {
     "1": "전세",
 }
 
-
 # 40㎡이하	40~60㎡이하	60㎡~85㎡이하	85㎡~135㎡이하	135㎡초과
 reb_size_gbn_map = {
     "0": "전체",
@@ -52,33 +52,34 @@ reb_size_gbn_map = {
     "5": "대형",
 }
 
+_reb_default_index_mappings_properties = {
+    "ALL_CNT": {"type": "integer"},
+    "DEAL_OBJ": {"type": "keyword"},
+    "LEVEL_NO": {"type": "integer"},
+    "REGION_CD": {"type": "keyword"},
+    "REGION_NM": {"type": "keyword"},
+    "RESEARCH_DATE": {"type": "date", "format": "yyyyMM"},
+}
+
+_reb_default_index_settings = {
+    "number_of_shards": 1
+}
+
 reb_index_mappings = {
     'getRealEstateTradingCount': {
         "index": "reb_getrealestatetradingcount",
-        "settings": {"number_of_shards": 1},
+        "settings": _reb_default_index_settings,
         "mappings": {
-            "properties": {
-                "ALL_CNT": {"type": "integer"},
-                "DEAL_OBJ": {"type": "keyword"},
-                "LEVEL_NO": {"type": "integer"},
-                "REGION_CD": {"type": "keyword"},
-                "REGION_NM": {"type": "keyword"},
-                "RESEARCH_DATE": {"type": "date", "format": "yyyyMM"},
+            "properties": _reb_default_index_mappings_properties | {
             }
         }
     },
     # 건물유형별 부동산 거래 건수 조회 상세기능 명세
     'getRealEstateTradingCountBuildType': {
         "index": "reb_getrealestatetradingcountbuildtype",
-        "settings": {"number_of_shards": 1},
+        "settings": _reb_default_index_settings,
         "mappings": {
-            "properties": {
-                "ALL_CNT": {"type": "integer"},
-                "DEAL_OBJ": {"type": "keyword"},
-                "LEVEL_NO": {"type": "integer"},
-                "REGION_CD": {"type": "keyword"},
-                "REGION_NM": {"type": "keyword"},
-                "RESEARCH_DATE": {"type": "date", "format": "yyyyMM"},
+            "properties": _reb_default_index_mappings_properties | {
                 "LIVE_SUM_COUNT": {"type": "integer"},
                 "BULD_USE11_CNT": {"type": "integer"},
                 "BULD_USE12_CNT": {"type": "integer"},
@@ -97,18 +98,30 @@ reb_index_mappings = {
     },
     'getAptRealTradingPriceIndex': {
         'index': "reb_getaptrealtradingpriceindex",
-        "settings": {"number_of_shards": 1},
+        "settings": _reb_default_index_settings,
         "mappings": {
-            "properties": {
+            "properties": _reb_default_index_mappings_properties | {
                 # 아파트 타입 (0: 공동주택, 1: 아파트, 3: 연립다세대)
                 "APT_TYPE": {"type": "keyword"},
                 # 계약 타입 (0: 매매, 1: 전세)
                 "CONTRACT_TYPE": {"type": "keyword"},
                 "INDICES": {"type": "float"},
-                "LEVEL_NO": {"type": "integer"},
-                "REGION_CD": {"type": "keyword"},
-                "REGION_NM": {"type": "keyword"},
-                "RESEARCH_DATE": {"type": "date", "format": "yyyyMM"},
+            }
+        }
+    },
+    'getAptRealTradingPriceIndexSize': {
+        'index': "reb_getaptrealtradingpriceindexsize",
+        "settings": _reb_default_index_settings,
+        "mappings": {
+            "properties": _reb_default_index_mappings_properties | {
+                # 아파트 타입 (0: 공동주택, 1: 아파트, 3: 연립다세대)
+                "APT_TYPE": {"type": "keyword"},
+                # 계약 타입 (0: 매매, 1: 전세)
+                "CONTRACT_TYPE": {"type": "keyword"},
+                "INDICES": {"type": "float"},
+                # SIZE_GBN	string
+                # 규모 구분 (0: 전체, 1: 초소형, 2: 소형, 3: 중소형, 4: 중대형, 5: 대형)
+                "SIZE_GBN": {"type": "keyword"}
             }
         }
     }
@@ -119,7 +132,7 @@ def reb_post_data(client, index, in_dir):
     # p = Path(config['REB_RESULT_DIR']) / Path(f'getRealEstateTradingCount/')
     p = in_dir
     successes = 0
-    for f in p.glob('data-*.json'):
+    for f in p.rglob('data-*.json'):
         # logger.info(f'Processing {f.name}')
         docs = json.loads(f.read_bytes())
         progress = tqdm(unit="docs", total=len(docs), desc=f.name)
@@ -145,6 +158,10 @@ def reb_post_getRealEstateTradingCount(client, in_dir):
 
 def reb_post_getAptRealTradingPriceIndex(client, in_dir):
     reb_post_data(client, 'getAptRealTradingPriceIndex', in_dir)
+
+
+def reb_post_getAptRealTradingPriceIndexSize(client, in_dir):
+    reb_post_data(client, 'getAptRealTradingPriceIndexSize', in_dir)
 
 
 def _reb_generate_doc(docs):
