@@ -5,14 +5,15 @@ from pathlib import Path
 from unittest import TestCase
 
 import config
-from post_data import esclient, post_year_corp_data, post_quarter_corp_data, post_corp_code
+from helpers import esclient
+from dart_post_data import dart_post_year_corp_data, dart_post_quarter_corp_data, dart_post_corp_code
 from config import ELASTIC_PASSWORD, ELASTIC_CERTFILE_FINGERPRINT, ELASTICSEARCH_URL, DART_CORPCODE_DATA_FILE
-from fetch_data import fetch_one_corp_data, fetch_corp_data, fetch_corp_code
+from dart_fetch_data import dart_fetch_one_corp_data, dart_fetch_corp_data, dart_fetch_corp_code
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import streaming_bulk, scan
 import sys
 
-from manage_dart_file import DartFileManager, DartFileManagerEx
+from dart_manage_file import DartFileManager, DartFileManagerEx
 
 
 class TestDartFileCleaner(TestCase):
@@ -27,7 +28,7 @@ class TestDartFileCleaner(TestCase):
 
 class TestFetchCorpCode(TestCase):
     def test(self):
-        fetch_corp_code()
+        dart_fetch_corp_code()
         self.assertTrue(Path(DART_CORPCODE_DATA_FILE).exists())
 
         zf = zipfile.ZipFile(DART_CORPCODE_DATA_FILE)
@@ -36,7 +37,7 @@ class TestFetchCorpCode(TestCase):
 
 class TestPostCorpCode(TestCase):
     def test(self):
-        n = post_corp_code(esclient)
+        n = dart_post_corp_code(esclient)
         self.assertGreater(n, 0)
 
 
@@ -55,7 +56,7 @@ class TestFetchOneCorpData(TestCase):
     def test(self):
         # years = list(range(2017, 2023))
         years = list(range(2017, 2023))
-        corp_data = fetch_one_corp_data(esclient, self.corp_code, self.corp_name, years)
+        corp_data = dart_fetch_one_corp_data(esclient, self.corp_code, self.corp_name, years)
         self.assertEqual(len(corp_data), len(years))
         for k, ydata in corp_data.items():
             self.assertEqual(len(ydata), 4)
@@ -83,30 +84,30 @@ class Test(TestCase):
 
     def test_get_corp_quarter_info_from_dart(self):
         years = [2022]
-        data = fetch_corp_data(self.corp_code, years)
+        data = dart_fetch_corp_data(self.corp_code, years)
         # print(data)
         # self.assertIsNotNone(data)
         # data는 1Q~4Q
         self.assertEqual(len(data), len(years))
 
         year = years[0]
-        n = post_quarter_corp_data(self.esclient, self.corp_code, data[year][0])
+        n = dart_post_quarter_corp_data(self.esclient, self.corp_code, data[year][0])
         self.assertGreaterEqual(n, 1)
 
     def test_get_corp_year_info_from_dart(self):
         years = [2022]
-        corp_data = fetch_corp_data(self.corp_code, self.corp_name, years)
+        corp_data = dart_fetch_corp_data(self.corp_code, self.corp_name, years)
         # print(data)
         # self.assertIsNotNone(data)
         # data는 1Q~4Q
         self.assertEqual(len(corp_data), len(years))
         self.assertTrue(2022 in corp_data)
-        ns = post_year_corp_data(self.esclient, self.corp_code, corp_data[2022])
+        ns = dart_post_year_corp_data(self.esclient, self.corp_code, corp_data[2022])
         self.assertGreaterEqual(len(ns), 1)
 
     def test_import_one_corp_data(self):
         years = [2021, 2022]
-        num_data = fetch_one_corp_data(self.esclient, self.corp_code, self.corp_name, years)
+        num_data = dart_fetch_one_corp_data(self.esclient, self.corp_code, self.corp_name, years)
         self.assertGreaterEqual(len(num_data), 1)
 
     def test_elasticsearch_client(self):

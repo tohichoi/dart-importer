@@ -1,9 +1,41 @@
-import logging
 import sys
 import json
+import time
+
+import pendulum
+import requests
+from elasticsearch import NotFoundError, Elasticsearch
 from elasticsearch.helpers import scan
 from pathlib import Path
-from config import QUARTER_CODES
+from config import QUARTER_CODES, REB_REGION_CODES, ELASTIC_USER, ELASTIC_PASSWORD, ELASTICSEARCH_URL, \
+    ELASTIC_CERTFILE_FINGERPRINT
+import logging
+import coloredlogs
+
+logfmt = "%(asctime)s %(levelname)10s %(message)s"
+coloredlogs.install(fmt=logfmt)
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format=logfmt,
+    datefmt="%Y-%m-%dT%H:%M:%S%z",
+)
+logging.Formatter.converter = time.gmtime
+logger = logging.getLogger()
+
+# load_dotenv()
+
+elastic_session = requests.Session()
+elastic_session.auth = (ELASTIC_USER, ELASTIC_PASSWORD)
+# elastic_session.verify = ELASTIC_CERTFILE
+elastic_session.verify = False
+
+esclient = Elasticsearch(
+    ELASTICSEARCH_URL,
+    # ca_certs=ELASTIC_CERTFILE,
+    ssl_assert_fingerprint=ELASTIC_CERTFILE_FINGERPRINT,
+    basic_auth=(ELASTIC_USER, ELASTIC_PASSWORD)
+)
 
 
 def query_corp_code_count(client) -> int:
@@ -135,3 +167,60 @@ def is_valid_dart_result_file(file):
         raise ValueError(f'Invalid data: {str(file)}')
 
     return ('status' in d) and (d['status'].strip() in ['000', '013'])
+
+
+def reb_load_region_codes(filepath):
+    if len(REB_REGION_CODES) > 0:
+        return REB_REGION_CODES
+
+    with open(filepath) as fd:
+        for line in fd.readlines():
+            tokens = line.split()
+            if len(tokens) != 2:
+                continue
+            REB_REGION_CODES[tokens[0]] = tokens[1]
+
+    return REB_REGION_CODES
+
+
+def query_index_imported(index_name):
+    #
+    # low-level api client
+    #
+    # r = elastic_session.get(ELASTICSEARCH_URL + '/corp_code/_count')
+    # if r.status_code == requests.codes.ok:
+    #     rj = r.json()
+    #     logger.info(f"corp_code has {rj['count']} records")
+    #     return rj['count']
+    # elif r.status_code == 404:
+    #     logger.info(f'{r.status_code} : maybe index is not created.')
+    #     return 0
+    # else:
+    #     logger.error(f'{r.status_code}')
+    #     r.raise_for_status()
+    resp = esclient.search(index=index_name, query={"match_all": {}})
+    return resp['hits']['total']['value']
+
+
+def get_time_frame(doc) -> dict:
+    # doc["time_frame"]: {
+    #   "gte": "2015-10-31 12:00:00",
+    #   "lte": "2015-11-01"
+    # pass
+    qc = doc['reprt_code']
+    y = int(doc['bsns_year'])
+    month = QUARTER_CODES.index(qc) * 3 + 1
+    tf = {
+        'gte': pendulum.datetime(y, month, 1).start_of('month').start_of('day').in_tz('Asia/Seoul').to_iso8601_string(),
+        'lte': pendulum.datetime(y, month + 2, 1).end_of('month').end_of('day').in_tz('Asia/Seoul').to_iso8601_string()
+    }
+    doc.update({'time_frame': tf})
+    return doc
+
+
+def delete_documents(client, indices):
+    try:
+        for ind in indices:
+            client.delete_by_query(index=ind, query={"match_all": {}})
+    except NotFoundError:
+        pass

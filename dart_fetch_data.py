@@ -1,38 +1,36 @@
 import collections
 import csv
 import json
-import logging
 import os
-import subprocess
-import sys
 import time
 from pathlib import Path
 from ssl import SSLZeroReturnError
 
 import pendulum
 import requests
-from elasticsearch.helpers import streaming_bulk, scan
+from elasticsearch.helpers import scan
 from requests.exceptions import SSLError
 from tqdm import tqdm
 
-from post_data import logger
+from dart_post_data import logger
 from config import DART_RESULT_DIR, dart_base_params, dart_params, QUARTER_CODES, DART_CORPCODE_DATA_FILE, \
     KRX_KOSPI200_DATA_FILE
-from helpers import query_corp_data, query_corp_code_doc, query_corp_code_count
-from manage_dart_file import DartFileManagerEx
+from helpers import query_corp_data, query_corp_code_doc
+from dart_manage_file import DartFileManagerEx
 
 
 class DARTMaxUsageError(Exception):
     pass
 
 
-def check_max_usage(r: dict):
-    if r['status'] == '020':
-        return r['message']
+def dart_check_max_usage(r: dict, service_name: str):
+    if service_name == 'dart':
+        if r['status'] == '020':
+            return r['message']
     return None
 
 
-def fetch_kospi200():
+def dart_fetch_kospi200():
     f = Path(KRX_KOSPI200_DATA_FILE)
     if not f.exists():
         raise FileNotFoundError(f.absolute())
@@ -62,7 +60,7 @@ def fetch_kospi200():
     return data
 
 
-def fetch_corp_code():
+def dart_fetch_corp_code():
     """고유번호
 
         https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019018
@@ -91,7 +89,7 @@ def fetch_corp_code():
     #     logger.error(f'Cannot generate file : {p.absolute()}')
 
 
-def fetch_one_corp_data(client, corp_code, corp_name, years) -> dict:
+def dart_fetch_one_corp_data(client, corp_code, corp_name, years) -> dict:
     dfm = DartFileManagerEx(data_dir=DART_RESULT_DIR, corp_code=corp_code, corp_name=corp_name,
                             data_file_prefix='financial-statements', logger=logger)
     corp_data = dict()
@@ -105,7 +103,7 @@ def fetch_one_corp_data(client, corp_code, corp_name, years) -> dict:
             # logger.info(f'local corp_data {corp_name}-{year} exists ')
             pass
         else:
-            year_corp_data = fetch_year_corp_data(corp_code, year)
+            year_corp_data = dart_fetch_year_corp_data(corp_code, year)
             corp_data.update({year: year_corp_data})
             # n = upload_year_corp_data(client, corp_code, year_corp_data)
             # ns.append(n)
@@ -114,7 +112,7 @@ def fetch_one_corp_data(client, corp_code, corp_name, years) -> dict:
     return corp_data
 
 
-def fetch_all_corp_data(client) -> dict:
+def dart_fetch_all_corp_data(client) -> dict:
     nc = collections.defaultdict(list)
     years = list(range(2017, 2023))
     # quarters = list(range(1, 5))
@@ -141,12 +139,12 @@ def fetch_all_corp_data(client) -> dict:
         corp_code = doc['_source']['corp_code']
         corp_name = query_corp_code_doc(client, corp_code)['_source']['corp_name']
         pbar.set_description(corp_name)
-        fetch_one_corp_data(client, corp_code, corp_name, years)
+        dart_fetch_one_corp_data(client, corp_code, corp_name, years)
         pbar.update(1)
     return nc
 
 
-def fetch_corp_data(corp_code, corp_name, years) -> dict:
+def dart_fetch_corp_data(corp_code, corp_name, years) -> dict:
     """get_corp_info_from_dart
 
     공시정보:
@@ -174,14 +172,14 @@ def fetch_corp_data(corp_code, corp_name, years) -> dict:
 
     for y in years:
         if y not in corp_data:
-            corp_data[y] = fetch_year_corp_data(corp_code, y)
+            corp_data[y] = dart_fetch_year_corp_data(corp_code, y)
 
     dfm.save(corp_data)
 
     return corp_data
 
 
-def fetch_year_corp_data(corp_code, year: int) -> list:
+def dart_fetch_year_corp_data(corp_code, year: int) -> list:
     url = 'https://opendart.fss.or.kr/api/fnlttSinglAcntAll.json'
     # output_filename = f'{DART_RESULT_DIR}/corp_data/{corp_code}-{corp_name}/financial-statement-{year}-<quarter>.json'
     # p = Path(output_filename)
@@ -204,7 +202,7 @@ def fetch_year_corp_data(corp_code, year: int) -> list:
         # of = output_filename.replace('<quarter>', rt_dict[rt])
         of = None
         d = download(url, dart_query_params, of)
-        max_usage = check_max_usage(d)
+        max_usage = dart_check_max_usage(d)
         if max_usage:
             raise DARTMaxUsageError(max_usage)
         ydata.append(d)
@@ -212,7 +210,7 @@ def fetch_year_corp_data(corp_code, year: int) -> list:
     return ydata
 
 
-def fetch_corp_info(corp_codes):
+def dart_fetch_corp_info(corp_codes):
     """고유번호
 
         https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019018
@@ -236,23 +234,32 @@ def fetch_corp_info(corp_codes):
         pbar.update(1)
 
 
-def download(url, params, output_filename):
+def download(url, params, output_filename, headers=None):
     retry = 5
+    data = None
     for i in range(retry):
         try:
-            r = requests.get(url, params=params)
+            r = requests.get(url, params=params, headers=headers)
             p = None
             if output_filename:
                 p = Path(output_filename)
                 if not p.parent.exists():
                     p.parent.mkdir()
                 p.write_bytes(r.content)
-            d = r.json()
-            max_usage = check_max_usage(d)
+            data = r.json()
+            max_usage = None
+            if 'dart' in url:
+                max_usage = dart_check_max_usage(data, 'dart')
+            elif 'reb' in url:
+                max_usage = dart_check_max_usage(data, 'reb')
+
             if max_usage:
                 if p:
                     p.unlink()
                 raise DARTMaxUsageError(max_usage)
+            break
         except (SSLZeroReturnError, SSLError):
             time.sleep(5)
             continue
+
+    return data

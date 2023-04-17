@@ -1,53 +1,25 @@
 #!/usr/bin/env python
-import codecs
 import json
+import logging
 import re
+import sys
 import zipfile
 from pathlib import Path
 from pprint import pprint
-import sys
+
 import pendulum
 import requests
 from bs4 import BeautifulSoup
-import time
-import logging
-import coloredlogs
-from tqdm import tqdm
-from elasticsearch import Elasticsearch, NotFoundError
 from elasticsearch.helpers import streaming_bulk
+from tqdm import tqdm
 
-from config import DART_RESULT_DIR, ELASTIC_USER, ELASTIC_PASSWORD, ELASTIC_CERTFILE_FINGERPRINT, \
-    ELASTICSEARCH_URL, QUARTER_CODES, KRX_KOSPI200_DATA_FILE
-from helpers import query_corp_info_doc, query_corp_data, query_corp_name, query_corp_quarter_doc
-from manage_dart_file import DartFileManagerEx
-
-logfmt = "%(asctime)s %(levelname)s %(message)s"
-coloredlogs.install(fmt=logfmt)
-
-logging.basicConfig(
-    level=logging.DEBUG,
-    format=logfmt,
-    datefmt="%Y-%m-%dT%H:%M:%S%z",
-)
-logging.Formatter.converter = time.gmtime
-logger = logging.getLogger()
-
-# load_dotenv()
-
-elastic_session = requests.Session()
-elastic_session.auth = (ELASTIC_USER, ELASTIC_PASSWORD)
-# elastic_session.verify = ELASTIC_CERTFILE
-elastic_session.verify = False
-
-esclient = Elasticsearch(
-    ELASTICSEARCH_URL,
-    # ca_certs=ELASTIC_CERTFILE,
-    ssl_assert_fingerprint=ELASTIC_CERTFILE_FINGERPRINT,
-    basic_auth=(ELASTIC_USER, ELASTIC_PASSWORD)
-)
+from config import DART_RESULT_DIR, ELASTICSEARCH_URL, KRX_KOSPI200_DATA_FILE
+from helpers import query_corp_info_doc, query_corp_data, query_corp_name, query_corp_quarter_doc, query_index_imported, \
+    get_time_frame, logger, elastic_session
+from dart_manage_file import DartFileManagerEx
 
 
-def parse_corp_info(filename):
+def dart_parse_corp_info(filename):
     """
 
     Args:
@@ -61,7 +33,7 @@ def parse_corp_info(filename):
     return [Path(f).with_suffix('') for f in zf.namelist()]
 
 
-def parse_corp_code(filename):
+def dart_parse_corp_code(filename):
     """
 
     Args:
@@ -77,7 +49,7 @@ def parse_corp_code(filename):
     return [t for t in soup.result.find_all('list')]
 
 
-def generate_corp_code_doc(code_code_list):
+def dart_generate_corp_code_doc(code_info_list):
     """corp code generator
     
         refer to fetch_corp_code()
@@ -88,7 +60,7 @@ def generate_corp_code_doc(code_code_list):
     Yields:
         dict: _description_
     """
-    for ci in code_code_list:
+    for ci in code_info_list:
         # code_info[ci.corp_name.text]
         doc = {
             '_id': ci.corp_code.text.strip(),
@@ -106,7 +78,7 @@ def generate_corp_code_doc(code_code_list):
         yield doc
 
 
-def generate_corp_info_doc(client, filename):
+def dart_generate_corp_info_doc(client, filename):
     logger.info(f'Parsing {filename}')
     zf = zipfile.ZipFile(filename)
     for f in zf.namelist():
@@ -124,12 +96,11 @@ def generate_corp_info_doc(client, filename):
     zf.close()
 
 
-def parse_corp_code_OLD(filename, do_post):
+def dart_parse_corp_code_OLD(filename, do_post):
     with open(filename) as fd:
         logger.info(f'Parsing {filename}')
         soup = BeautifulSoup(fd.read(), features="xml")
     code_info_list = soup.result.find_all('list')
-    code_info = dict()
     post_body_data = ''
     with tqdm(total=len(code_info_list), desc='Parsing') as pbar:
         for ci in code_info_list:
@@ -153,7 +124,7 @@ def parse_corp_code_OLD(filename, do_post):
                                  headers={'Content-Type': 'application/json'})
         if r.status_code == requests.codes.ok:
             logger.info('Posting OK')
-            nimported = query_index_imported()
+            nimported = query_index_imported(None)
             logger.info(f'Posted data : {nimported}')
         else:
             logger.error(f'{r.status_code}')
@@ -163,32 +134,13 @@ def parse_corp_code_OLD(filename, do_post):
 # 고유번호
 
 
-def analyze_corp_info(data):
+def dart_analyze_corp_info(data):
     # "account_id": "ifrs-full_ComprehensiveIncome",
     # "account_nm": "총포괄손익",
     for ydata in data:
         for d in ydata['list']:
             if d['account_nm'] == '총포괄손익':
                 pprint(d)
-
-
-def query_index_imported(index_name):
-    #
-    # low-level api client
-    #
-    # r = elastic_session.get(ELASTICSEARCH_URL + '/corp_code/_count')
-    # if r.status_code == requests.codes.ok:
-    #     rj = r.json()
-    #     logger.info(f"corp_code has {rj['count']} records")
-    #     return rj['count']
-    # elif r.status_code == 404:
-    #     logger.info(f'{r.status_code} : maybe index is not created.')
-    #     return 0
-    # else:
-    #     logger.error(f'{r.status_code}')
-    #     r.raise_for_status()
-    resp = esclient.search(index=index_name, query={"match_all": {}})
-    return resp['hits']['total']['value']
 
 
 # low-level api client
@@ -204,7 +156,7 @@ def query_index_imported(index_name):
 
 
 # https://github.com/elastic/elasticsearch-py/blob/main/examples/bulk-ingest
-def create_index(client, indices):
+def dart_create_index(client, indices):
     """Creates an index in Elasticsearch if one isn't already there."""
 
     # field types
@@ -378,22 +330,14 @@ def create_index(client, indices):
             "properties": {
                 "corp_name": {"type": "keyword"},
                 "stock_code": {"type": "keyword"},
-                "market_capitalization":{"type": "long"},
+                "market_capitalization": {"type": "long"},
                 "date": {"type": "date", "format": "yyyyMMdd"},
             }
         },
     )
 
 
-def delete_documents(client, indices):
-    try:
-        for ind in indices:
-            client.delete_by_query(index=ind, query={"match_all": {}})
-    except NotFoundError:
-        pass
-
-
-def get_fetched_docs():
+def dart_get_fetched_docs():
     """이미 fetch된 doc 리스트 구하기
     
         - 9만개 이상의 corp_code가 존재함
@@ -427,7 +371,7 @@ def get_fetched_docs():
 #     return successes
 
 
-def post_quarter_corp_data_history(client, corp_code, qdata: dict, successes):
+def dart_post_quarter_corp_data_history(client, corp_code, qdata: dict, successes):
     docs = qdata['list']
 
     '''
@@ -449,23 +393,7 @@ def post_quarter_corp_data_history(client, corp_code, qdata: dict, successes):
     }
 
 
-def _get_time_frame(doc) -> dict:
-    # doc["time_frame"]: {
-    #   "gte": "2015-10-31 12:00:00",
-    #   "lte": "2015-11-01"
-    # pass
-    qc = doc['reprt_code']
-    y = int(doc['bsns_year'])
-    month = QUARTER_CODES.index(qc) * 3 + 1
-    tf = {
-        'gte': pendulum.datetime(y, month, 1).start_of('month').start_of('day').in_tz('Asia/Seoul').to_iso8601_string(),
-        'lte': pendulum.datetime(y, month + 2, 1).end_of('month').end_of('day').in_tz('Asia/Seoul').to_iso8601_string()
-    }
-    doc.update({'time_frame': tf})
-    return doc
-
-
-def post_quarter_corp_data(client, corp_code, qdata: dict) -> int:
+def dart_post_quarter_corp_data(client, corp_code, qdata: dict) -> int:
     if type(qdata) != dict:
         raise TypeError(f'Data type is not dict : {str(type(qdata))}')
         # logger.error(f'Data type is not dict : {str(type(qdata))}')
@@ -480,7 +408,7 @@ def post_quarter_corp_data(client, corp_code, qdata: dict) -> int:
     logging.disable(sys.maxsize)
     for doc in docs:
         # create 는 id 필요. index 는 불필요
-        doc = _get_time_frame(doc)
+        doc = get_time_frame(doc)
         if not query_corp_quarter_doc(client, doc):
             resp = client.index(index="corp_data", document=doc)
             # http status 200 or 201
@@ -493,37 +421,37 @@ def post_quarter_corp_data(client, corp_code, qdata: dict) -> int:
     logging.disable(logging.NOTSET)
 
     # logger.info("Indexed %d/%d documents" % (successes, number_of_docs))
-    post_quarter_corp_data_history(client, corp_code, qdata, successes)
+    dart_post_quarter_corp_data_history(client, corp_code, qdata, successes)
 
     return successes
 
 
-def post_year_corp_data(client, corp_code, year, ydata: list):
+def dart_post_year_corp_data(client, corp_code, year, ydata: list):
     ns = []
     corp_name = query_corp_name(client, corp_code)
     for idx, qdata in enumerate(ydata):
         try:
-            ns.append(post_quarter_corp_data(client, corp_code, qdata))
+            ns.append(dart_post_quarter_corp_data(client, corp_code, qdata))
         except (ValueError, TypeError) as e:
             logger.error(f'{corp_name}/{year}/{idx}th : {e}')
             continue
     return ns
 
 
-def post_corp_code(client):
+def dart_post_corp_code(client):
     corp_code_output_filename = f'{DART_RESULT_DIR}/corp-code.zip'
 
     logger.info('Checking index status ... ')
     n = query_index_imported('corp_code')
     if n == 0:
         logger.info('Parsing corp code')
-        corp_code_list = parse_corp_code(corp_code_output_filename)
+        corp_code_list = dart_parse_corp_code(corp_code_output_filename)
         number_of_docs = len(corp_code_list)
         progress = tqdm(unit="docs", total=number_of_docs)
         successes = 0
         logging.disable(sys.maxsize)
         for ok, action in streaming_bulk(
-                client=client, index="corp_code", actions=generate_corp_code_doc(corp_code_list),
+                client=client, index="corp_code", actions=dart_generate_corp_code_doc(corp_code_list),
         ):
             progress.update(1)
             successes += ok
@@ -533,7 +461,7 @@ def post_corp_code(client):
     return n
 
 
-def post_corp_info(client):
+def dart_post_corp_info(client):
     corp_info_output_filename = f'{DART_RESULT_DIR}/corp_info.zip'
 
     # logger.info('Checking index status ... ')
@@ -546,7 +474,7 @@ def post_corp_info(client):
     successes = 0
     # logging.disable(sys.maxsize)
     for ok, action in streaming_bulk(
-            client=client, index="corp_info", actions=generate_corp_info_doc(client, corp_info_output_filename),
+            client=client, index="corp_info", actions=dart_generate_corp_info_doc(client, corp_info_output_filename),
     ):
         # progress.update(1)
         successes += ok
@@ -556,9 +484,9 @@ def post_corp_info(client):
     return successes
 
 
-def post_all_corp_data(client):
+def dart_post_all_corp_data(client):
     data_dir = Path(DART_RESULT_DIR).joinpath('corp_data')
-    corps = [ p for p in list(data_dir.rglob('*')) if p.is_dir() ]
+    corps = [p for p in list(data_dir.rglob('*')) if p.is_dir()]
     progress_corp = tqdm(unit="corps", total=len(corps), desc='Corporations', colour='blue')
     for p in corps:
         m = re.match(r'([0-9]+)-(.+)$', p.name)
@@ -575,17 +503,17 @@ def post_all_corp_data(client):
                     hits = query_corp_data(client, corp_code, year)
                     # quarter * 4
                     if sum(hits) != 4:
-                        post_year_corp_data(client, corp_code, year, ydata)
+                        dart_post_year_corp_data(client, corp_code, year, ydata)
                     progress_years.update(1)
         progress_corp.update(1)
 
 
-def generate_kospi200_doc(client, data):
+def dart_generate_kospi200_doc(client, data):
     for d in data:
         yield d
 
 
-def post_kospi200(client):
+def dart_post_kospi200(client):
     f = Path(KRX_KOSPI200_DATA_FILE).with_suffix('.json')
     if not f.exists():
         raise FileNotFoundError(f.absolute())
@@ -594,16 +522,17 @@ def post_kospi200(client):
         data = json.load(fd)
 
     successes = 0
+
     for doc in data:
         resp = client.index(index="kospi200", document=doc)
         # http status 200 or 201
         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/201
         if resp['result'] == 'created':
             successes += 1
-
     # for ok, action in streaming_bulk(
     #         client=client, index="kospi200", actions=generate_kospi200_doc(client, data),
     # ):
     #     successes += ok
 
     return successes
+

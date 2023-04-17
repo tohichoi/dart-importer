@@ -317,6 +317,10 @@ https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl.html
 
 https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-create-index.html
 
+### field data types
+
+https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping-types.html
+
 ## python api
 
 https://elasticsearch-py.readthedocs.io/en/v8.6.2/
