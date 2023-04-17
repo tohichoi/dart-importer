@@ -226,7 +226,8 @@ def fetch_corp_info(corp_codes):
         output_filename = Path(DART_RESULT_DIR).joinpath(f'corp_info/{corp_code}.json')
         pbar.set_description(corp_code)
         if Path.exists(output_filename):
-            logger.info(f'We have {output_filename}. Fetching is skipped.')
+            # logger.info(f'We have {output_filename}. Fetching is skipped.')
+            pass
         else:
             url = "https://opendart.fss.or.kr/api/company.json"
             # logger.info('Querying corp_code ... ')
