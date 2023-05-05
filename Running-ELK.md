@@ -350,10 +350,33 @@ POST _aliases
   - api key 생성
     - stack management -> api keys
 
+## Test
+
 ```
 export KIBANA_API_KEY="..."
 curl --location --request GET 'http://www.samjungenr.com:5609/api/security/role' \                                                         ─╯
 --header 'Content-Type: application/json;charset=UTF-8' \
 --header 'kbn-xsrf: true' \
 --header "Authorization: ApiKey $KIBANA_API_KEY" \
+```
+
+## Getting all spaces
+
+```
+KIBANA_HOST="http://www.samjungenr.com:5609/"
+curl -X GET "$KIBANA_HOST/api/spaces/space" --header "Authorization: ApiKey $KIBANA_API_KEY"
+  
+```
+
+
+## Getting data view list
+
+```
+curl -X GET "$KIBANA_HOST/s/default/api/data_views" --header "Authorization: ApiKey $KIBANA_API_KEY"
+```
+
+### with space
+
+```
+curl -X GET "$KIBANA_HOST/s/0a9fb46c-561b-4863-a738-e0e837af5d20/api/data_views" --header "Authorization: ApiKey $KIBANA_API_KEY"
 ```

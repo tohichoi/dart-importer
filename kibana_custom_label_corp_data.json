@@ -1,0 +1,83 @@
+{
+  "data_view": {
+    "title": "corp_data",
+    "name": "Corp data view",
+    "fieldAttrs": {
+      "rcept_no": {
+        "customLabel": "접수번호"
+      },
+      "reprt_code": {
+        "customLabel": "보고서 코드"
+      },
+      "bsns_year": {
+        "customLabel": "사업 연도"
+      },
+      "corp_code": {
+        "customLabel": "고유번호"
+      },
+      "sj_div": {
+        "customLabel": "재무제표구분"
+      },
+      "sj_nm": {
+        "customLabel": "재무제표명"
+      },
+      "account_id": {
+        "customLabel": "계정ID"
+      },
+      "account_nm": {
+        "customLabel": "계정명"
+      },
+      "account_detail": {
+        "customLabel": "계정상세"
+      },
+      "thstrm_nm": {
+        "customLabel": "당기명"
+      },
+      "thstrm_amount": {
+        "customLabel": "당기금액"
+      },
+      "thstrm_add_amount": {
+        "customLabel": "당기누적금액"
+      },
+      "frmtrm_nm": {
+        "customLabel": "전기명"
+      },
+      "frmtrm_amount": {
+        "customLabel": "전기금액"
+      },
+      "frmtrm_q_nm": {
+        "customLabel": "전기명(분/반기)"
+      },
+      "frmtrm_q_amount": {
+        "customLabel": "전기금액(분/반기)"
+      },
+      "frmtrm_add_amount": {
+        "customLabel": "전기누적금액"
+      },
+      "bfefrmtrm_nm": {
+        "customLabel": "전전기명"
+      },
+      "bfefrmtrm_amount": {
+        "customLabel": "전전기금액"
+      },
+      "ord": {
+        "customLabel": "계정과목 정렬순서"
+      },
+      "currency": {
+        "customLabel": "통화 단위"
+      },
+      "time_frame": {
+        "customLabel": "기간"
+      },
+      "corp_name": {
+        "customLabel": "고유번호"
+      },
+      "stock_code": {
+        "customLabel": "종목코드"
+      },
+      "stock_name": {
+        "customLabel": "종목이름"
+      }
+    }
+  }
+}

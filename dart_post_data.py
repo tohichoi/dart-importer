@@ -308,9 +308,8 @@ def dart_create_index(client, indices):
         )
 
     # create custom label for kibana
-
-    subprocess.run()    
-
+    # use kibana_custom_label_corp_data.sh
+    
     client.options(ignore_status=400).indices.create(
         index="corp_import_history",
         settings={"number_of_shards": 1},
