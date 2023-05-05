@@ -343,3 +343,17 @@ POST _aliases
   ]
 }
 ```
+
+
+# Using Kibana api
+
+  - api key 생성
+    - stack management -> api keys
+
+```
+export KIBANA_API_KEY="..."
+curl --location --request GET 'http://www.samjungenr.com:5609/api/security/role' \                                                         ─╯
+--header 'Content-Type: application/json;charset=UTF-8' \
+--header 'kbn-xsrf: true' \
+--header "Authorization: ApiKey $KIBANA_API_KEY" \
+```

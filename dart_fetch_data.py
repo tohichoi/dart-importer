@@ -117,7 +117,16 @@ def dart_fetch_all_corp_data(client) -> dict:
     years = list(range(2017, 2023))
     # quarters = list(range(1, 5))
     # its = scan(client, query={"query": {"match_all": {}}}, index="corp_code", scroll="360m")
-    check_its = scan(client, query={"query": {"match_all": {}}}, index="corp_code", scroll="360m")
+    # GET /_search
+    # {
+    #   "query": {
+    #     "term": {
+    #       "corp_code": "xxx",
+    #       "boost": 1.0
+    #     }
+    #   }
+    # }
+    check_its = scan(client, query={"query": {"term": {"corp_cls": "Y"}}}, index="corp_info", scroll="360m")
     # 00126380 : 삼성전자
     # 00128564-삼천리M&C
     # check_its = [query_corp_code_doc(client, cc) for cc in ["00126380", "00309503", "00162461"]]
@@ -202,7 +211,7 @@ def dart_fetch_year_corp_data(corp_code, year: int) -> list:
         # of = output_filename.replace('<quarter>', rt_dict[rt])
         of = None
         d = download(url, dart_query_params, of)
-        max_usage = dart_check_max_usage(d)
+        max_usage = dart_check_max_usage(d, 'dart')
         if max_usage:
             raise DARTMaxUsageError(max_usage)
         ydata.append(d)
@@ -224,7 +233,8 @@ def dart_fetch_corp_info(corp_codes):
         output_filename = Path(DART_RESULT_DIR).joinpath(f'corp_info/{corp_code}.json')
         pbar.set_description(corp_code)
         if Path.exists(output_filename):
-            logger.info(f'We have {output_filename}. Fetching is skipped.')
+            # logger.info(f'We have {output_filename}. Fetching is skipped.')
+            pass
         else:
             url = "https://opendart.fss.or.kr/api/company.json"
             # logger.info('Querying corp_code ... ')

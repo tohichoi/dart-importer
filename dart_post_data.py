@@ -84,7 +84,8 @@ def dart_generate_corp_info_doc(client, filename):
     for f in zf.namelist():
         ci = json.loads(zf.read(f))
         resp = query_corp_info_doc(client, ci['corp_code'])
-        if resp['hits']['total']['value'] > 0:
+        # if resp['hits']['total']['value'] > 0:
+        if resp:
             continue
         for k in ['status', 'message']:
             del (ci[k])
@@ -295,9 +296,20 @@ def dart_create_index(client, indices):
                         # https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping-date-format.html
                         "format": "strict_date_optional_time_nanos"
                     },
+                    # extra fields 
+                    # 고유번호
+                    "corp_name": {"type": "keyword"},
+                    # 고유번호
+                    "stock_code": {"type": "keyword"},
+                    # 고유번호
+                    "stock_name": {"type": "keyword"},
                 }
             },
         )
+
+    # create custom label for kibana
+
+    subprocess.run()    
 
     client.options(ignore_status=400).indices.create(
         index="corp_import_history",
@@ -371,7 +383,7 @@ def dart_get_fetched_docs():
 #     return successes
 
 
-def dart_post_quarter_corp_data_history(client, corp_code, qdata: dict, successes):
+def dart_post_quarter_corp_data_history(client, ci_doc, qdata: dict, successes):
     docs = qdata['list']
 
     '''
@@ -388,12 +400,12 @@ def dart_post_quarter_corp_data_history(client, corp_code, qdata: dict, successe
                     }
     '''
     history = {
-        'corp_code': corp_code,
+        'corp_code': ci_doc['corp_code'],
         'year': qdata['list'][0]['bsns_year']
     }
 
 
-def dart_post_quarter_corp_data(client, corp_code, qdata: dict) -> int:
+def dart_post_quarter_corp_data(client, ci_doc, qdata: dict) -> int:
     if type(qdata) != dict:
         raise TypeError(f'Data type is not dict : {str(type(qdata))}')
         # logger.error(f'Data type is not dict : {str(type(qdata))}')
@@ -409,6 +421,13 @@ def dart_post_quarter_corp_data(client, corp_code, qdata: dict) -> int:
     for doc in docs:
         # create 는 id 필요. index 는 불필요
         doc = get_time_frame(doc)
+        doc.update({
+            'corp_code': ci_doc['corp_code'],
+            'corp_name': ci_doc['corp_name'],
+            'stock_code': ci_doc['stock_code'],
+            'stock_name': ci_doc['stock_name'],
+        })
+
         if not query_corp_quarter_doc(client, doc):
             resp = client.index(index="corp_data", document=doc)
             # http status 200 or 201
@@ -421,17 +440,18 @@ def dart_post_quarter_corp_data(client, corp_code, qdata: dict) -> int:
     logging.disable(logging.NOTSET)
 
     # logger.info("Indexed %d/%d documents" % (successes, number_of_docs))
-    dart_post_quarter_corp_data_history(client, corp_code, qdata, successes)
+    dart_post_quarter_corp_data_history(client, ci_doc, qdata, successes)
 
     return successes
 
 
-def dart_post_year_corp_data(client, corp_code, year, ydata: list):
+def dart_post_year_corp_data(client, ci_doc, year, ydata: list):
     ns = []
-    corp_name = query_corp_name(client, corp_code)
+    # corp_name = query_corp_name(client, corp_code)
+    corp_name = ci_doc['corp_name']
     for idx, qdata in enumerate(ydata):
         try:
-            ns.append(dart_post_quarter_corp_data(client, corp_code, qdata))
+            ns.append(dart_post_quarter_corp_data(client, ci_doc, qdata))
         except (ValueError, TypeError) as e:
             logger.error(f'{corp_name}/{year}/{idx}th : {e}')
             continue
@@ -493,6 +513,7 @@ def dart_post_all_corp_data(client):
         if m:
             corp_code = m.group(1)
             corp_name = m.group(2)
+            ci_doc = query_corp_info_doc(client, corp_code)
             progress_corp.set_description(corp_name)
             dfm = DartFileManagerEx(data_dir=DART_RESULT_DIR, corp_code=corp_code, corp_name=corp_name,
                                     data_file_prefix='financial-statements', logger=logger)
@@ -500,10 +521,10 @@ def dart_post_all_corp_data(client):
                 progress_years = tqdm(unit='years', total=len(dfm.corp_data), leave=False, colour='yellow')
                 for year, ydata in dfm.corp_data.items():
                     progress_years.set_description(f'Year {year}')
-                    hits = query_corp_data(client, corp_code, year)
+                    hits = query_corp_data(client, ci_doc, year)
                     # quarter * 4
                     if sum(hits) != 4:
-                        dart_post_year_corp_data(client, corp_code, year, ydata)
+                        dart_post_year_corp_data(client, ci_doc, year, ydata)
                     progress_years.update(1)
         progress_corp.update(1)
 
