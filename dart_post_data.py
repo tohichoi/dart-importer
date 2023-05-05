@@ -2,7 +2,6 @@
 import json
 import logging
 import re
-import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -309,51 +308,8 @@ def dart_create_index(client, indices):
         )
 
     # create custom label for kibana
-    corp_data_props = {
-        "rcept_no": "접수번호",
-        "reprt_code": "보고서 코드",
-        "bsns_year": "사업 연도",
-        "corp_code": "고유번호",
-        # BS : 재무상태표 IS : 손익계산서 CIS : 포괄손익계산서 CF : 현금흐름표 SCE : 자본변동표
-        "sj_div": "재무제표구분",
-        "sj_nm": "재무제표명",
-        # XBRL 표준계정ID ※ 표준계정ID가 아닐경우 ""-표준계정코드 미사용-"" 표시
-        "account_id": "계정ID",
-        "account_nm": "계정명",
-        # ※ 자본변동표에만 출력 ex) 계정 상세명칭 예시 - 자본 [member]|지배기업 소유주지분 - 자본 [member]|지배기업 소유주지분|기타포괄손익누계액 [member]
-        "account_detail": "계정상세",
-        "thstrm_nm": "당기명",
-        # 9,999,999,999 ※ 분/반기 보고서이면서 (포괄)손익계산서 일 경우 [3개월] 금액
-        "thstrm_amount": "당기금액",
-        "thstrm_add_amount": "당기누적금액",
-        "frmtrm_nm": "전기명",
-        "frmtrm_amount": "전기금액",
-        "frmtrm_q_nm": "전기명(분/반기)",
-        # ※ 분/반기 보고서이면서 (포괄)손익계산서 일 경우 [3개월] 금액
-        "frmtrm_q_amount": "전기금액(분/반기)",
-        "frmtrm_add_amount": "전기누적금액",
-        "bfefrmtrm_nm": "전전기명",
-        "bfefrmtrm_amount": "전전기금액",
-        "ord": "계정과목 정렬순서",
-        "currency": "통화 단위",
-        "time_frame": "기간",
-        # extra fields
-        "corp_name": "고유번호",
-        "stock_code": "종목코드",
-        "stock_name": "종목이름",
-    }
-
-    # curl --location --request GET 'http://www.samjungenr.com:5609/api/security/role' \                                                         ─╯
-    # --header 'Content-Type: application/json;charset=UTF-8' \
-    # --header 'kbn-xsrf: true' \
-    # --header "Authorization: ApiKey $KIBANA_API_KEY" \
-    subprocess.run([
-        'curl',
-        '--location',
-        '--request',
-
-    ])
-
+    # use kibana_custom_label_corp_data.sh
+    
     client.options(ignore_status=400).indices.create(
         index="corp_import_history",
         settings={"number_of_shards": 1},
