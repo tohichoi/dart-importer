@@ -69,6 +69,8 @@ def main():
 
     reb_load_region_codes(Path(config['REB_RESULT_DIR']) / Path(config['REG_REGION_CODES_FILE']))
 
+    logger.info(args)
+
     if len(args.create_index) > 0:
         reb_create_index(esclient, args.create_index)
 
@@ -112,8 +114,8 @@ def main():
             sys.exit(1)
         reb_post_getAptRealTradingPriceIndexSize(esclient, in_dir)
 
-    if 'getRealEstateTradingCount' in args.preprocess:
-        reb_preprocess_getRealEstateTradingCount()
+    # if 'getRealEstateTradingCount' in args.preprocess:
+    #     reb_preprocess_getRealEstateTradingCount()
 
 
 

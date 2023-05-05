@@ -1,5 +1,8 @@
 import json
+import time
 from pathlib import Path
+
+from tqdm import tqdm
 
 from config import config, REB_REGION_CODES
 from dart_fetch_data import download
@@ -67,7 +70,7 @@ def reb_get_fetch_param(gte, lte):
     return headers, params
 
 
-def reb_get_data(url:str, outdir:str, gte:str, lte:str, extra_params=None):
+def reb_get_data(url: str, outdir: str, gte: str, lte: str, extra_params=None):
     headers, params = reb_get_fetch_param(gte, lte)
 
     if extra_params:
@@ -77,10 +80,11 @@ def reb_get_data(url:str, outdir:str, gte:str, lte:str, extra_params=None):
     if not poutdir.exists():
         poutdir.mkdir(parents=True, exist_ok=True)
 
-    # progress1 = tqdm(total=len(REB_REGION_CODES))
+    progress1 = tqdm(total=len(REB_REGION_CODES))
     for region_code, region_name in REB_REGION_CODES.items():
-        # progress1.set_description(region_name)
-        logger.info(f'Fetching {region_name}')
+        # progress1.colour = 'red'
+        progress1.set_description(f'{gte}-{lte} : {region_name}')
+        # logger.info(f'Fetching {region_name}')
         params['cond[REGION_CD::EQ]'] = region_code
         output_filename = poutdir / Path(f'data-{region_name}.json')
 
@@ -88,10 +92,13 @@ def reb_get_data(url:str, outdir:str, gte:str, lte:str, extra_params=None):
         bare_data = []
         params['page'] = 1
         data = download(url, params, None, headers)
+        progress1.update(1)
         if data:
-            max_count = data['matchCount']
-            if max_count == 0:
-                logger.error(f'{region_name} has no data ')
+            progress1.colour = 'green'
+            # time.sleep(1)
+            max_count = data.get('matchCount', None)
+            if not max_count or max_count == 0:
+                progress1.colour = 'red'
                 continue
             current_count = data['currentCount']
             bare_data += reb_postprocess_doc(data['data'])
