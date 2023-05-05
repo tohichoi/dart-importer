@@ -42,26 +42,40 @@ docker cp dart-importer_es01_1:/usr/share/elasticsearch/config/certs config/elas
 
 ```
 source ./venv/bin/activate
-python main.py --create-index corp_code
-python main.py --create-index corp_data
+python ./main_dart.py --create-index corp_code
+python ./main_dart.py --create-index corp_data
 ```
 
-## fetching corp_code
+## corp_code
+
+### fetching
 
 ```
 # DART_RESULT_DIR=./data/dart in .env
 mkdir -p data/dart
-python main.py --fetch corp_code
+python ./main_dart.py --fetch corp_code
 ```
 
-## posting corp_code
+### posting
 
 ```
-python main.py --post corp_code
+python ./main_dart.py --post corp_code
 ```
 
-## fetching corp_data
+### fetching 
 
 ```
-python main.py --fetch corp_data
+python ./main_dart.py --fetch corp_data
+```
+
+## corp_info
+
+### posting
+
+```
+zip -r --junk-paths corp_info.zip corp_info
+```
+
+```
+python ./main_dart.py --post corp_info
 ```

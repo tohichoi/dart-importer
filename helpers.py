@@ -80,7 +80,7 @@ def query_corp_quarter_data(client, corp_code, year: int, quarter: int) -> bool:
     return resp['hits']['total']['value'] > 0
 
 
-def query_corp_data(client, corp_code, year: int) -> list:
+def query_corp_data(client, ci_doc, year: int) -> list:
     # 연단위로만 체크하자
     # resp = es.search(index="test-index", query={"match_all": {}})
     # print("Got %d Hits:" % resp['hits']['total']['value'])
@@ -92,7 +92,7 @@ def query_corp_data(client, corp_code, year: int) -> list:
         resp = client.search(index="corp_data", query={
             "bool": {
                 "must": [
-                    {"term": {"corp_code": corp_code}},
+                    {"term": {"corp_code": ci_doc['corp_code']}},
                     {"term": {"bsns_year": str(year)}},
                     {"term": {"reprt_code": qc}}
                 ]
@@ -121,15 +121,18 @@ def query_corp_info_doc(client, corp_code):
     #                          headers={'Content-Type': 'application/json'})
     logging.disable(sys.maxsize)
     resp = client.search(index="corp_info", query={
-        "match": {
-            "corp_code": {
-                "query": corp_code
-            }
+        "bool": {
+            "must": [
+                {"term": {"corp_code": corp_code}}
+            ]
         }
     })
     logging.disable(logging.NOTSET)
 
-    return resp
+    if resp['hits']['total']['value'] > 0:
+        return resp['hits']['hits'][0]['_source']
+
+    return None
 
 
 def query_corp_code_doc(client, corp_code):
