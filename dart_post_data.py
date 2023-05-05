@@ -296,9 +296,20 @@ def dart_create_index(client, indices):
                         # https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping-date-format.html
                         "format": "strict_date_optional_time_nanos"
                     },
+                    # extra fields 
+                    # 고유번호
+                    "corp_name": {"type": "keyword"},
+                    # 고유번호
+                    "stock_code": {"type": "keyword"},
+                    # 고유번호
+                    "stock_name": {"type": "keyword"},
                 }
             },
         )
+
+    # create custom label for kibana
+
+    subprocess.run()    
 
     client.options(ignore_status=400).indices.create(
         index="corp_import_history",
