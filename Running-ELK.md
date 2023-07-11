@@ -363,7 +363,7 @@ curl --location --request GET 'http://www.samjungenr.com:5609/api/security/role'
 ## Getting all spaces
 
 ```
-KIBANA_HOST="http://www.samjungenr.com:5609/"
+KIBANA_HOST="http://www.samjungenr.com:5609"
 curl -X GET "$KIBANA_HOST/api/spaces/space" --header "Authorization: ApiKey $KIBANA_API_KEY"
   
 ```

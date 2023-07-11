@@ -11,8 +11,8 @@ def reb_download_page(url, params, output_filename, headers):
     # download first page
     data = download(url, params, output_filename, headers)
     if data:
-        max_count = data['matchCount']
-        current_count = data['currentCount']
+        max_count = data.get('matchCount', 0)
+        current_count = data.get('currentCount', 0)
 
     return data
 
@@ -89,11 +89,11 @@ def reb_get_data(url:str, outdir:str, gte:str, lte:str, extra_params=None):
         params['page'] = 1
         data = download(url, params, None, headers)
         if data:
-            max_count = data['matchCount']
+            max_count = data.get('matchCount', 0)
             if max_count == 0:
                 logger.error(f'{region_name} has no data ')
                 continue
-            current_count = data['currentCount']
+            current_count = data.get('currentCount', 0)
             bare_data += reb_postprocess_doc(data['data'])
             # progress2 = tqdm(total=max_count, desc=region_name)
             while current_count < max_count:
