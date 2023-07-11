@@ -31,10 +31,10 @@ def main():
     parser = argparse.ArgumentParser(description='reb importer')
     parser.add_argument('--create-index',
                         help='Create ElasticSearch Index. Example: ./main_reb.py --create-index getRealEstateTradingCount',
-                        choices=indices, nargs="+", default=[])
-    parser.add_argument('--delete-documents', help='Delete all documents', choices=indices, nargs="+", default=[])
-    parser.add_argument('--fetch', help='Fetch data', choices=indices, nargs="+", default=[])
-    parser.add_argument('--post', help='Post data', choices=indices, nargs="+", default=[])
+                        choices=indices.keys(), nargs="+", default=[])
+    parser.add_argument('--delete-documents', help='Delete all documents', nargs="+", default=[])
+    parser.add_argument('--fetch', help='Fetch data', choices=indices, nargs="+", default=indices.keys())
+    parser.add_argument('--post', help='Post data', choices=indices, nargs="+", default=indices.keys())
     parser.add_argument('--in-dir', help='Input directory', type=str)
     parser.add_argument('--preprocess', help='Preprocess data', choices=indices, nargs="+", default=[])
     parser.add_argument('--gte', help='Begin date (YYYYMM)', type=str, default=gte)
@@ -65,7 +65,7 @@ def main():
     if not args.out_dir:
         args.out_dir = Path(config['REB_RESULT_DIR']) / Path('getRealEstateTradingCount') / Path(
             f'{args.gte}-{args.lte}')
-        args.out_dir.mkdir(exist_ok=True)
+        args.out_dir.mkdir(exist_ok=True, parents=True)
 
     reb_load_region_codes(Path(config['REB_RESULT_DIR']) / Path(config['REG_REGION_CODES_FILE']))
 
@@ -78,8 +78,12 @@ def main():
         reb_fetch_getRealEstateTradingCount(args.out_dir, args.gte, args.lte)
 
     if 'getRealEstateTradingCount' in args.post:
+        if not args.in_dir:
+            logger.error('--in-dir error')
+            sys.exit(1)
+
         in_dir = Path(args.in_dir)
-        if not in_dir.exists():
+        if args.post is None or not in_dir.exists():
             logger.error('--in-dir error')
             sys.exit(1)
         reb_post_getRealEstateTradingCount(esclient, in_dir)
