@@ -8,6 +8,7 @@ from config import config, REB_REGION_CODES
 from dart_fetch_data import download
 from helpers import logger
 from reb_post_data import reb_deal_obj_map, reb_apt_type_map, reb_contract_type_map, reb_size_gbn_map
+import logging
 
 
 def reb_download_page(url, params, output_filename, headers):
@@ -99,6 +100,7 @@ def reb_get_data(url: str, outdir: str, gte: str, lte: str, extra_params=None):
             max_count = data.get('matchCount', None)
             if not max_count or max_count == 0:
                 progress1.colour = 'red'
+                logging.error(data)
                 continue
             current_count = data['currentCount']
             bare_data += reb_postprocess_doc(data['data'])

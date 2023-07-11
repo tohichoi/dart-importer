@@ -1,6 +1,10 @@
-#/bin/bash
+#!/bin/bash
 
-curl -X POST 'http://www.samjungenr.com:5609/api/data_views/corp_data' \
+KIBANA_HOST="http://www.samjungenr.com:5609"
+echo $KIBANA_API_KEY
+
+# shellcheck disable=SC2016
+curl -X POST "$KIBANA_HOST/api/data_views/data_view" \
 --header 'Content-Type: application/json;charset=UTF-8' \
 --header 'kbn-xsrf: true' \
 --header "Authorization: ApiKey $KIBANA_API_KEY" \

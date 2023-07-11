@@ -1,7 +1,7 @@
 {
   "data_view": {
     "title": "corp_data",
-    "name": "Corp data view",
+    "name": "corp_data",
     "fieldAttrs": {
       "rcept_no": {
         "customLabel": "접수번호"
@@ -70,7 +70,7 @@
         "customLabel": "기간"
       },
       "corp_name": {
-        "customLabel": "고유번호"
+        "customLabel": "회사명"
       },
       "stock_code": {
         "customLabel": "종목코드"
